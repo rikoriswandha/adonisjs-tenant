@@ -2,7 +2,7 @@
 
 **Date**: 2026-05-17  
 **Tests**: 126 passed / 126  
-**Typecheck**: 1 error in `configure.ts:41`  
+**Typecheck**: 1 error in `configure.ts:41`
 
 ---
 
@@ -47,6 +47,7 @@ error TS2345: Argument of type 'URL' is not assignable to parameter of type 'str
 **Files**: `README.md:124-137`, `src/guards/tenant_aware_session.ts:63-93`
 
 README shows:
+
 ```ts
 web: tenantGuards.session({ provider: 'user', tenantProvider }),
 ```
@@ -85,6 +86,7 @@ Code inside tenant A's context can set `model.tenant_id = 'tenant-b-id'` and the
 **Files**: `src/user_providers/tenant_user_provider.ts:25`, `README.md:128`, `stubs/migrations/tenant_user.stub`
 
 Default usage:
+
 ```ts
 new TenantUserProvider(User, 'tenant_user')
 ```
@@ -122,11 +124,11 @@ Standard JWT Base64url omits padding. Node `atob` requires valid Base64, so toke
 
 ## Verification Summary
 
-| Check | Result |
-|---|---|
-| `npm test` | 126/126 passed |
-| `npm run typecheck` | failed — `configure.ts:41` TS2345 |
-| LSP diagnostics | 1 error (same) |
-| Test type | Mostly mocked, does not exercise real Lucid query paths |
+| Check               | Result                                                  |
+| ------------------- | ------------------------------------------------------- |
+| `npm test`          | 126/126 passed                                          |
+| `npm run typecheck` | failed — `configure.ts:41` TS2345                       |
+| LSP diagnostics     | 1 error (same)                                          |
+| Test type           | Mostly mocked, does not exercise real Lucid query paths |
 
 The test suite is broad but shallow: tenant-scope tests reimplement hook logic manually rather than driving real Lucid queries, so the update/delete isolation gaps (finding 4) are not caught.

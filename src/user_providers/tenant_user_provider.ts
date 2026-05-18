@@ -1,5 +1,4 @@
 import { RuntimeException } from '@adonisjs/core/exceptions'
-import type { HttpContext } from '@adonisjs/core/http'
 import type { LucidModel } from '@adonisjs/lucid/types/model'
 import type { TenantContext, TenantUserProviderContract } from '../types.js'
 
@@ -10,10 +9,6 @@ export class TenantUserProvider<UserModel extends LucidModel> implements TenantU
     private userModel: UserModel,
     private tenantUserPivot: string = 'tenant_user'
   ) {}
-
-  async resolveTenant(_ctx: HttpContext): Promise<TenantContext | null> {
-    return null
-  }
 
   async findById(
     tenant: TenantContext,

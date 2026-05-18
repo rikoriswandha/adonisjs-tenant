@@ -30,19 +30,40 @@ export type TenantMiddlewareConfig = {
 }
 
 /**
+ * Static configuration store for TenantMiddleware.
+ * Set via {@link TenantMiddleware.configure} during application boot.
+ */
+let middlewareConfig: TenantMiddlewareConfig | null = null
+
+/**
  * Middleware that resolves the current tenant from the HTTP request
  * and sets it as the AsyncLocalStorage tenant context.
  *
  * Sets `ctx.tenant` for convenience access within controllers.
+ *
+ * Before use, call {@link TenantMiddleware.configure} to set the resolver.
+ * The provider does this automatically during boot.
  */
 export class TenantMiddleware {
-  constructor(private config: TenantMiddlewareConfig) {}
+  /**
+   * Configure the middleware with a resolver and options.
+   * Called by TenancyProvider during boot.
+   */
+  static configure(config: TenantMiddlewareConfig): void {
+    middlewareConfig = config
+  }
 
   async handle(ctx: HttpContext, next: () => Promise<void>): Promise<void> {
-    const tenant = await this.config.resolver.resolve(ctx)
+    if (!middlewareConfig) {
+      throw new Error(
+        'TenantMiddleware not configured. Ensure TenancyProvider has booted or call TenantMiddleware.configure().'
+      )
+    }
+
+    const tenant = await middlewareConfig.resolver.resolve(ctx)
 
     if (!tenant) {
-      if (this.config.failOnMissing !== false) {
+      if (middlewareConfig.failOnMissing !== false) {
         ctx.response.status(404).send('Tenant not found')
         return
       }

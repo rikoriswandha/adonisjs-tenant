@@ -46,6 +46,14 @@ test.group('TenantService', () => {
     assert.equal(result, 'done')
   })
 
+  test('run executes sync callback within tenant context', async ({ assert }) => {
+    const result = await TenantService.run(tenantFixture, () => {
+      const ctx = getTenantContext()
+      return ctx?.id
+    })
+    assert.equal(result, tenantFixture.id)
+  })
+
   test('isActive returns false outside tenant context', ({ assert }) => {
     assert.isFalse(TenantService.isActive())
   })

@@ -11,6 +11,11 @@ import { getTenantContext } from '../tenant_context.js'
 /**
  * Custom access tokens provider that injects tenant_id into
  * the auth_access_tokens table during token creation.
+ *
+ * Note: DbAccessTokensProvider.create() does not accept extra columns,
+ * so tenant_id is set via a follow-up UPDATE after the initial INSERT.
+ * This is the only approach that avoids forking the upstream provider.
+ * The migration should keep tenant_id as nullable to accommodate this.
  */
 export class TenantDbAccessTokensProvider<
   TokenableModel extends LucidModel,

@@ -32,11 +32,6 @@ export type TenantConfig = {
  */
 export interface TenantUserProviderContract<RealUser> {
   /**
-   * Resolve the tenant context for a given HTTP request.
-   */
-  resolveTenant(ctx: HttpContext): Promise<TenantContext | null>
-
-  /**
    * Find a user by their identifier scoped to the current tenant.
    */
   findById(tenant: TenantContext, identifier: string | number): Promise<RealUser | null>

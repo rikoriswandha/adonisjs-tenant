@@ -10,6 +10,7 @@ import type { GuardConfigProvider, GuardFactory, GuardContract } from '@adonisjs
 import { HttpContext } from '@adonisjs/core/http'
 import type { Secret } from '@adonisjs/core/helpers'
 import type { TenantContext } from '../types.js'
+import { isConfigProvider } from '../utils/is_config_provider.js'
 
 const S = symbols
 
@@ -22,12 +23,11 @@ export class TenantAwareAccessTokensUserProvider<
     private wrappedProvider: AccessTokensUserProviderContract<RealUser>,
     private tenantProvider: {
       findById(tenant: TenantContext, id: string | number): Promise<RealUser | null>
-      resolveTenant(ctx: HttpContext): Promise<TenantContext | null>
     },
     private getCurrentTenant: () => TenantContext | null = () => {
       const ctx = HttpContext.get()
       if (!ctx) return null
-      return (ctx as any).tenant ?? null
+      return ctx.tenant ?? null
     }
   ) {
     this[S.PROVIDER_REAL_USER] = wrappedProvider[S.PROVIDER_REAL_USER]
@@ -75,22 +75,12 @@ export class TenantAwareAccessTokensUserProvider<
   }
 }
 
-function isConfigProvider<T>(value: T | ConfigProvider<T>): value is ConfigProvider<T> {
-  return (
-    typeof value === 'object' &&
-    value !== null &&
-    'resolver' in value &&
-    typeof (value as ConfigProvider<T>).resolver === 'function'
-  )
-}
-
 export function tenantAwareAccessTokensGuard(config: {
   provider:
     | AccessTokensUserProviderContract<unknown>
     | ConfigProvider<AccessTokensUserProviderContract<unknown>>
   tenantProvider: {
     findById(tenant: TenantContext, id: string | number | BigInt): Promise<unknown | null>
-    resolveTenant(ctx: HttpContext): Promise<TenantContext | null>
   }
 }): GuardConfigProvider<GuardFactory> {
   return {
@@ -103,7 +93,6 @@ export function tenantAwareAccessTokensGuard(config: {
         rawProvider as AccessTokensUserProviderContract<unknown>,
         config.tenantProvider as {
           findById(tenant: TenantContext, id: string | number): Promise<unknown | null>
-          resolveTenant(ctx: HttpContext): Promise<TenantContext | null>
         }
       )
 

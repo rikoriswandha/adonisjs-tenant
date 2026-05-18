@@ -26,7 +26,7 @@ export class TenantService {
   /**
    * Execute a callback within a tenant-scoped context.
    */
-  static async run<T>(tenant: TenantContext, callback: () => Promise<T>): Promise<T> {
+  static run<T>(tenant: TenantContext, callback: () => T | Promise<T>): Promise<T> {
     return runWithTenant(tenant, callback)
   }
 

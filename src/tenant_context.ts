@@ -23,6 +23,9 @@ export function getTenantContextOrFail(): TenantContext {
   return tenant
 }
 
-export function runWithTenant<T>(tenant: TenantContext, callback: () => Promise<T>): Promise<T> {
-  return storage.run(tenant, callback)
+export function runWithTenant<T>(
+  tenant: TenantContext,
+  callback: () => T | Promise<T>
+): Promise<T> {
+  return Promise.resolve(storage.run(tenant, callback))
 }

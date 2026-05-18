@@ -1,6 +1,5 @@
 import { test } from '@japa/runner'
 import { RuntimeException } from '@adonisjs/core/exceptions'
-import type { HttpContext } from '@adonisjs/core/http'
 import type { LucidModel } from '@adonisjs/lucid/types/model'
 import { TenantUserProvider } from '../src/user_providers/tenant_user_provider.js'
 import type { TenantContext } from '../src/types.js'
@@ -60,15 +59,6 @@ test.group('TenantUserProvider', () => {
     const provider = new TenantUserProvider(mockUserModel(null))
 
     await assert.rejects(() => provider.getUserFor(tenant, 999), RuntimeException)
-  })
-
-  test('resolveTenant returns null by default', async ({ assert }) => {
-    const provider = new TenantUserProvider(mockUserModel(null))
-    const ctx = {} as HttpContext
-
-    const result = await provider.resolveTenant(ctx)
-
-    assert.isNull(result)
   })
 
   test('uses custom pivot table name', async ({ assert }) => {

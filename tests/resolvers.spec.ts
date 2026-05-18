@@ -139,6 +139,66 @@ test.group('HeaderResolver', () => {
     assert.isNotNull(result)
     assert.equal(result!.slug, 'custom-tenant')
   })
+
+  test('use lookup callback to resolve tenant', async ({ assert }) => {
+    const resolver = new HeaderResolver({
+      lookup: (headerValue) => ({
+        id: headerValue,
+        name: `Tenant ${headerValue}`,
+        slug: headerValue.toLowerCase(),
+      }),
+    })
+    const ctx = mockContext('ACME')
+    const result = await resolver.resolve(ctx)
+    assert.isNotNull(result)
+    assert.equal(result!.id, 'ACME')
+    assert.equal(result!.name, 'Tenant ACME')
+    assert.equal(result!.slug, 'acme')
+  })
+
+  test('lookup returning null means no tenant', async ({ assert }) => {
+    const resolver = new HeaderResolver({
+      lookup: () => null,
+    })
+    const ctx = mockContext('unknown')
+    const result = await resolver.resolve(ctx)
+    assert.isNull(result)
+  })
+
+  test('use tenants map to resolve tenant', async ({ assert }) => {
+    const resolver = new HeaderResolver({
+      tenants: {
+        'tenant-1': { id: 1, name: 'Acme' },
+        'tenant-2': { id: 2, name: 'Beta' },
+      },
+    })
+    const ctx = mockContext('tenant-1')
+    const result = await resolver.resolve(ctx)
+    assert.isNotNull(result)
+    assert.equal(result!.id, 1)
+    assert.equal(result!.name, 'Acme')
+    assert.equal(result!.slug, 'tenant-1')
+  })
+
+  test('tenants map returns null for unknown header value', async ({ assert }) => {
+    const resolver = new HeaderResolver({
+      tenants: { 'tenant-1': { id: 1, name: 'Acme' } },
+    })
+    const ctx = mockContext('unknown-tenant')
+    const result = await resolver.resolve(ctx)
+    assert.isNull(result)
+  })
+
+  test('lookup takes precedence over tenants map', async ({ assert }) => {
+    const resolver = new HeaderResolver({
+      tenants: { x: { id: 1, name: 'From Map' } },
+      lookup: (value) => ({ id: value, name: 'From Lookup', slug: value }),
+    })
+    const ctx = mockContext('x')
+    const result = await resolver.resolve(ctx)
+    assert.isNotNull(result)
+    assert.equal(result!.name, 'From Lookup')
+  })
 })
 
 test.group('JwtResolver', () => {

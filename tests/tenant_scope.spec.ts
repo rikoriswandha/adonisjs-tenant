@@ -142,128 +142,55 @@ test.group('TenantScope', () => {
     assert.isFunction(PostModel.forTenant)
   })
 
-  test('before save sets tenant_id from context when not set', async ({ assert }) => {
-    const instance = new PostModel()
-    instance.title = 'Test Post'
+  test('find hook applies tenant scope via hook runner', async ({ assert }) => {
+    PostModel.boot()
+    const query = makeFakeQuery()
 
     await runWithTenant(
       { id: 'ctx-tenant-1', name: 'Test Tenant', slug: 'test-tenant' },
       async () => {
-        const ctx = getTenantContext()
-        assert.isNotNull(ctx)
-        if (!instance.tenant_id) {
-          ;(instance as any).tenant_id = ctx!.id
-        }
+        await PostModel.$hooks.runner('before:find').run(query)
       }
     )
 
-    assert.equal(instance.tenant_id, 'ctx-tenant-1')
-  })
-
-  test('before save does not override explicit tenant_id', async ({ assert }) => {
-    const instance = new PostModel()
-    instance.title = 'Test Post'
-    instance.tenant_id = 'explicit-tenant'
-
-    await runWithTenant(
-      { id: 'ctx-tenant-1', name: 'Test Tenant', slug: 'test-tenant' },
-      async () => {
-        if (!instance.tenant_id) {
-          ;(instance as any).tenant_id = getTenantContext()!.id
-        }
-      }
-    )
-
-    assert.equal(instance.tenant_id, 'explicit-tenant')
-  })
-
-  test('find hook applies tenant scope within tenant context', async ({ assert }) => {
-    const fakeQuery = {
-      sideloaded: {} as Record<string, unknown>,
-      where: (key: string, value: unknown) => {
-        assert.equal(key, 'tenant_id')
-        assert.equal(value, 'ctx-tenant-1')
-      },
-    }
-
-    await runWithTenant(
-      { id: 'ctx-tenant-1', name: 'Test Tenant', slug: 'test-tenant' },
-      async () => {
-        const ctx = getTenantContext()
-        if (!(fakeQuery.sideloaded as any)?.$adonisjs_tenant_skipScope) {
-          if (ctx) {
-            fakeQuery.where('tenant_id', ctx.id)
-          }
-        }
-      }
-    )
+    assert.deepEqual(query.wheres, [['tenant_id', 'ctx-tenant-1']])
   })
 
   test('find hook skips tenant scope with skip flag', async ({ assert }) => {
-    let hookCalled = false
-
-    const fakeQuery = {
-      sideloaded: { $adonisjs_tenant_skipScope: true } as Record<string, unknown>,
-      where: (..._args: unknown[]) => {
-        hookCalled = true
-      },
-    }
+    PostModel.boot()
+    const query = makeFakeQuery(true)
 
     await runWithTenant(
       { id: 'ctx-tenant-1', name: 'Test Tenant', slug: 'test-tenant' },
       async () => {
-        if (!(fakeQuery.sideloaded as any)?.$adonisjs_tenant_skipScope) {
-          const ctx = getTenantContext()
-          if (ctx) {
-            fakeQuery.where('tenant_id', ctx.id)
-          }
-        }
+        await PostModel.$hooks.runner('before:find').run(query)
       }
     )
 
-    assert.isFalse(hookCalled)
+    assert.isEmpty(query.wheres)
   })
 
-  test('fetch hook applies tenant scope within tenant context', async ({ assert }) => {
-    let whereCalled = false
-    const fakeQuery = {
-      sideloaded: {} as Record<string, unknown>,
-      where: (..._args: unknown[]) => {
-        whereCalled = true
-      },
-    }
+  test('fetch hook applies tenant scope via hook runner', async ({ assert }) => {
+    PostModel.boot()
+    const query = makeFakeQuery()
 
     await runWithTenant({ id: 'tenant-abc', name: 'Test', slug: 'test' }, async () => {
-      const ctx = getTenantContext()
-      if (!(fakeQuery.sideloaded as any)?.$adonisjs_tenant_skipScope) {
-        if (ctx) {
-          fakeQuery.where('tenant_id', ctx.id)
-        }
-      }
+      await PostModel.$hooks.runner('before:fetch').run(query)
     })
 
-    assert.isTrue(whereCalled)
+    assert.deepEqual(query.wheres, [['tenant_id', 'tenant-abc']])
   })
 
   test('no scope applied when no tenant context', async ({ assert }) => {
-    let whereCalled = false
-    const fakeQuery = {
-      sideloaded: {} as Record<string, unknown>,
-      where: (..._args: unknown[]) => {
-        whereCalled = true
-      },
-    }
+    PostModel.boot()
+    const query = makeFakeQuery()
 
     const ctx = getTenantContext()
     assert.isUndefined(ctx)
 
-    if (!(fakeQuery.sideloaded as any)?.$adonisjs_tenant_skipScope) {
-      if (ctx) {
-        fakeQuery.where('tenant_id', ctx.id)
-      }
-    }
+    await PostModel.$hooks.runner('before:find').run(query)
 
-    assert.isFalse(whereCalled)
+    assert.isEmpty(query.wheres)
   })
 
   test('multiple models can use the mixin independently', ({ assert }) => {

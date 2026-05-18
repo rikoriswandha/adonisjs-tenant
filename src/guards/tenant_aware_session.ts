@@ -6,6 +6,7 @@ import type { GuardConfigProvider, GuardFactory, GuardContract } from '@adonisjs
 import { HttpContext } from '@adonisjs/core/http'
 import type { TenantUserProvider } from '../user_providers/tenant_user_provider.js'
 import type { TenantContext } from '../types.js'
+import { isConfigProvider } from '../utils/is_config_provider.js'
 
 const S = symbols
 
@@ -18,7 +19,6 @@ export class TenantAwareSessionUserProvider<
     private wrappedProvider: SessionUserProviderContract<RealUser>,
     private tenantUserProvider: {
       findById(tenant: TenantContext, id: string | number): Promise<RealUser | null>
-      resolveTenant(ctx: HttpContext): Promise<TenantContext | null>
     },
     private getCurrentTenant: () => TenantContext | null = () => {
       const ctx = HttpContext.get()
@@ -51,15 +51,6 @@ export class TenantAwareSessionUserProvider<
   }
 }
 
-function isConfigProvider<T>(value: T | ConfigProvider<T>): value is ConfigProvider<T> {
-  return (
-    typeof value === 'object' &&
-    value !== null &&
-    'resolver' in value &&
-    typeof (value as ConfigProvider<T>).resolver === 'function'
-  )
-}
-
 export function tenantAwareSessionGuard(config: {
   provider:
     | SessionUserProviderContract<unknown>
@@ -74,7 +65,6 @@ export function tenantAwareSessionGuard(config: {
 
       const wrappedProvider = new TenantAwareSessionUserProvider(rawProvider, {
         findById: (tenant, id) => config.tenantProvider.findById(tenant, id),
-        resolveTenant: (ctx) => config.tenantProvider.resolveTenant(ctx),
       })
 
       const emitter = await app.container.make('emitter')

@@ -99,21 +99,23 @@ const resolver = new PathResolver({
 
 ### Middleware setup
 
-Register the middleware in your routes:
+The provider automatically registers the `tenant` middleware alias from your `config/tenancy.ts` configuration. Use it on routes that need tenant resolution:
 
 ```ts
 // start/routes.ts
-import router from '@adonisjs/core/services/router'
-
-router.use(router.named('tenant'))
+router
+  .get('/dashboard', (ctx) => {
+    console.log(ctx.tenant) // TenantContext { id, name, slug }
+  })
+  .middleware('tenant')
 ```
 
-Use it on routes that need tenant resolution:
+The middleware calls the configured resolver to extract the tenant from the request (subdomain, header, JWT, or path), sets `ctx.tenant`, and scopes all downstream code via AsyncLocalStorage.
+
+If no tenant is resolved, the middleware returns a 404 by default. To allow requests without a tenant:
 
 ```ts
-router.get('/dashboard', [TenantMiddleware], async ({ tenant }) => {
-  console.log(tenant) // TenantContext { id, name, slug }
-})
+// In config/tenancy.ts, the failOnMissing option is available via TenantMiddleware.configure()
 ```
 
 ### Tenant-aware authentication guards
@@ -199,7 +201,8 @@ const tenant = TenantService.get()
 const tenant = TenantService.require()
 
 // Check if tenant context is active
-if (TenantService.isActive()) {}
+if (TenantService.isActive()) {
+}
 
 // Run a callback within a tenant-scoped context
 await TenantService.run(tenant, async () => {
@@ -283,61 +286,61 @@ Request → TenantMiddleware → resolver.resolve() → TenantContext → AsyncL
 
 ### Core
 
-| Export | Description |
-|--------|-------------|
-| `TenantService` | Static API for accessing tenant context outside HTTP |
-| `getTenantContext()` | Retrieve current TenantContext or undefined |
-| `getTenantContextOrFail()` | Retrieve current TenantContext or throw |
-| `runWithTenant(tenant, fn)` | Execute a callback within a tenant-scoped context |
+| Export                      | Description                                          |
+| --------------------------- | ---------------------------------------------------- |
+| `TenantService`             | Static API for accessing tenant context outside HTTP |
+| `getTenantContext()`        | Retrieve current TenantContext or undefined          |
+| `getTenantContextOrFail()`  | Retrieve current TenantContext or throw              |
+| `runWithTenant(tenant, fn)` | Execute a callback within a tenant-scoped context    |
 
 ### Configuration
 
-| Export | Description |
-|--------|-------------|
-| `defineTenancyConfig()` | Type-safe configuration for tenancy |
+| Export                     | Description                                   |
+| -------------------------- | --------------------------------------------- |
+| `defineTenancyConfig()`    | Type-safe configuration for tenancy           |
 | `defineTenantAuthConfig()` | Type-safe configuration for tenant-aware auth |
 
 ### Middleware
 
-| Export | Description |
-|--------|-------------|
+| Export             | Description                                           |
+| ------------------ | ----------------------------------------------------- |
 | `TenantMiddleware` | HTTP middleware that resolves and sets tenant context |
 
 ### Guards
 
-| Export | Description |
-|--------|-------------|
-| `tenantGuards.session()` | Tenant-aware session guard factory |
+| Export                        | Description                              |
+| ----------------------------- | ---------------------------------------- |
+| `tenantGuards.session()`      | Tenant-aware session guard factory       |
 | `tenantGuards.accessTokens()` | Tenant-aware access tokens guard factory |
-| `tenantGuards.basicAuth()` | Tenant-aware basic auth guard factory |
+| `tenantGuards.basicAuth()`    | Tenant-aware basic auth guard factory    |
 
 ### Resolvers
 
-| Export | Description |
-|--------|-------------|
-| `SubdomainResolver` | Resolve tenant from subdomain |
-| `HeaderResolver` | Resolve tenant from HTTP header |
-| `JwtResolver` | Resolve tenant from JWT in Authorization header |
-| `PathResolver` | Resolve tenant from first URL path segment |
+| Export              | Description                                     |
+| ------------------- | ----------------------------------------------- |
+| `SubdomainResolver` | Resolve tenant from subdomain                   |
+| `HeaderResolver`    | Resolve tenant from HTTP header                 |
+| `JwtResolver`       | Resolve tenant from JWT in Authorization header |
+| `PathResolver`      | Resolve tenant from first URL path segment      |
 
 ### ORM
 
-| Export | Description |
-|--------|-------------|
-| `TenantScope` | Lucid model mixin for tenant-scoped queries |
+| Export                 | Description                                              |
+| ---------------------- | -------------------------------------------------------- |
+| `TenantScope`          | Lucid model mixin for tenant-scoped queries              |
 | `withTenantAuthFinder` | Lucid model mixin combining auth finder + tenant scoping |
 
 ### Extensions
 
-| Export | Description |
-|--------|-------------|
+| Export                  | Description                                    |
+| ----------------------- | ---------------------------------------------- |
 | `extendAuthenticator()` | Replace Authenticator with TenantAuthenticator |
-| `TenantAuthenticator` | Extended authenticator with `tenant` getter |
+| `TenantAuthenticator`   | Extended authenticator with `tenant` getter    |
 
 ### User providers
 
-| Export | Description |
-|--------|-------------|
+| Export               | Description                                             |
+| -------------------- | ------------------------------------------------------- |
 | `TenantUserProvider` | User provider that scopes lookups to the current tenant |
 
 ## Limitations
@@ -386,11 +389,13 @@ If you see `TenantNotResolvedError: No tenant context available`, it means you'r
 **Common causes:**
 
 1. **Missing middleware** — Ensure routes that need tenant scoping use the middleware:
+
    ```ts
    router.get('/posts', [PostsController, 'index']).middleware('tenant')
    ```
 
 2. **CLI/Queue context** — Use `TenantService.run()` when outside HTTP:
+
    ```ts
    await TenantService.run(tenant, async () => {
      // Your tenant-scoped code here

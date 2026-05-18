@@ -8,7 +8,7 @@
 |
 */
 
-import type { HttpContext } from '@adonisjs/http-server'
+import type { HttpContext } from '@adonisjs/core/http'
 import type { TenantContext, TenantResolverContract } from '../types.js'
 
 /**

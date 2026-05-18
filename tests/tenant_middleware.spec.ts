@@ -2,7 +2,7 @@ import { test } from '@japa/runner'
 import { TenantMiddleware } from '../src/middleware/tenant_middleware.js'
 import { getTenantContext } from '../src/tenant_context.js'
 import type { TenantResolverContract, TenantContext } from '../src/types.js'
-import type { HttpContext } from '@adonisjs/http-server'
+import type { HttpContext } from '@adonisjs/core/http'
 
 const acme: TenantContext = { id: 1, name: 'Acme Corp', slug: 'acme' }
 
@@ -30,10 +30,11 @@ test.group('TenantMiddleware', () => {
   }
 
   test('set ctx.tenant when tenant resolved and call next', async ({ assert }) => {
-    const middleware = new TenantMiddleware({
+    TenantMiddleware.configure({
       resolver: fakeResolver(acme),
       failOnMissing: true,
     })
+    const middleware = new TenantMiddleware()
 
     let nextCalled = false
     const ctx = createContext()
@@ -53,9 +54,10 @@ test.group('TenantMiddleware', () => {
   })
 
   test('set ctx.tenant when tenant resolved with default failOnMissing', async ({ assert }) => {
-    const middleware = new TenantMiddleware({
+    TenantMiddleware.configure({
       resolver: fakeResolver(acme),
     })
+    const middleware = new TenantMiddleware()
 
     let nextCalled = false
     const ctx = createContext()
@@ -70,10 +72,11 @@ test.group('TenantMiddleware', () => {
   })
 
   test('return 404 when tenant missing and failOnMissing is true', async ({ assert }) => {
-    const middleware = new TenantMiddleware({
+    TenantMiddleware.configure({
       resolver: fakeResolver(null),
       failOnMissing: true,
     })
+    const middleware = new TenantMiddleware()
 
     let nextCalled = false
     const ctx = createContext()
@@ -98,9 +101,10 @@ test.group('TenantMiddleware', () => {
   })
 
   test('return 404 when tenant missing and failOnMissing defaults to true', async ({ assert }) => {
-    const middleware = new TenantMiddleware({
+    TenantMiddleware.configure({
       resolver: fakeResolver(null),
     })
+    const middleware = new TenantMiddleware()
 
     let nextCalled = false
     const ctx = createContext()
@@ -119,10 +123,11 @@ test.group('TenantMiddleware', () => {
   })
 
   test('call next when tenant missing and failOnMissing is false', async ({ assert }) => {
-    const middleware = new TenantMiddleware({
+    TenantMiddleware.configure({
       resolver: fakeResolver(null),
       failOnMissing: false,
     })
+    const middleware = new TenantMiddleware()
 
     let nextCalled = false
     const ctx = createContext()
@@ -136,9 +141,10 @@ test.group('TenantMiddleware', () => {
   })
 
   test('getTenantContext is undefined after middleware completes', async ({ assert }) => {
-    const middleware = new TenantMiddleware({
+    TenantMiddleware.configure({
       resolver: fakeResolver(acme),
     })
+    const middleware = new TenantMiddleware()
 
     const ctx = createContext()
     await middleware.handle(ctx, async () => {})
