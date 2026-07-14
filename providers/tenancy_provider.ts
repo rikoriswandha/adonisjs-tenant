@@ -10,7 +10,7 @@ import type { TenancyConfig, TenantResolverContract } from '../src/types.js'
 
 declare module '@adonisjs/core/types' {
   interface ContainerBindings {
-    'tenant.service': TenantService
+    'tenant.service': typeof TenantService
   }
 }
 

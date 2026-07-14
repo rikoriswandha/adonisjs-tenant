@@ -5,7 +5,7 @@ import TenancyProvider, {
 } from '../providers/tenancy_provider.js'
 import { TenantService } from '../src/tenant_service.js'
 import { extendAuthenticator } from '../src/extensions/authenticator.js'
-import type { ApplicationService } from '@adonisjs/core/types'
+import type { ApplicationService, ContainerBindings } from '@adonisjs/core/types'
 
 test.group('TenancyProvider', () => {
   test('default-exports the provider class for AdonisJS lazy loading', ({ assert }) => {
@@ -39,7 +39,8 @@ test.group('TenancyProvider', () => {
 
     assert.equal(bindingKey, 'tenant.service')
     const resolved = await bindingFactory()
-    assert.strictEqual(resolved, TenantService)
+    const typedTenantService: ContainerBindings['tenant.service'] = TenantService
+    assert.strictEqual(resolved, typedTenantService)
   })
 
   test('boots without registering a redundant router middleware alias', async ({ assert }) => {

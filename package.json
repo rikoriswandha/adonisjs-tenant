@@ -1,7 +1,7 @@
 {
   "name": "adonisjs-tenant",
   "description": "Multitenancy library for AdonisJS v7 — tenant-aware auth + ORM scoping",
-  "version": "0.0.0",
+  "version": "0.1.0",
   "engines": {
     "node": ">=24.0.0"
   },
@@ -47,7 +47,7 @@
     "multi-tenant",
     "saas"
   ],
-  "author": "",
+  "author": "Riko Riswandha Fahmi Prasetyo <rikorisw@gmail.com>",
   "license": "MIT",
   "devDependencies": {
     "@adonisjs/assembler": "^8.0.0",
@@ -142,7 +142,12 @@
     ],
     "exclude": [
       "tests/**"
-    ]
+    ],
+    "check-coverage": true,
+    "branches": 80,
+    "functions": 80,
+    "lines": 80,
+    "statements": 80
   },
   "prettier": "@adonisjs/prettier-config"
 }

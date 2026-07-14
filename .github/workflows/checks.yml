@@ -9,8 +9,10 @@ jobs:
   lint:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      # v4.2.2
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+      # v4.0.3
+      - uses: actions/setup-node@1e60f620b9541d2ab18bd2f7672f6c50420cf4b0
         with:
           node-version: 24
       - name: Install
@@ -21,8 +23,10 @@ jobs:
   typecheck:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      # v4.2.2
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+      # v4.0.3
+      - uses: actions/setup-node@1e60f620b9541d2ab18bd2f7672f6c50420cf4b0
         with:
           node-version: 24
       - name: Install
@@ -37,9 +41,11 @@ jobs:
         os: [ubuntu-latest, windows-latest]
         node-version: [24]
     steps:
-      - uses: actions/checkout@v4
+      # v4.2.2
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
       - name: Use Node.js ${{ matrix.node-version }}
-        uses: actions/setup-node@v4
+        # v4.0.3
+        uses: actions/setup-node@1e60f620b9541d2ab18bd2f7672f6c50420cf4b0
         with:
           node-version: ${{ matrix.node-version }}
       - name: Install
@@ -50,8 +56,10 @@ jobs:
   package:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      # v4.2.2
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+      # v4.0.3
+      - uses: actions/setup-node@1e60f620b9541d2ab18bd2f7672f6c50420cf4b0
         with:
           node-version: 24
       - name: Install
