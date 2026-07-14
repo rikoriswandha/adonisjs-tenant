@@ -44,7 +44,7 @@ let middlewareConfig: TenantMiddlewareConfig | null = null
  * Before use, call {@link TenantMiddleware.configure} to set the resolver.
  * The provider does this automatically during boot.
  */
-export class TenantMiddleware {
+class TenantMiddleware {
   /**
    * Configure the middleware with a resolver and options.
    * Called by TenancyProvider during boot.
@@ -76,3 +76,5 @@ export class TenantMiddleware {
     await runWithTenant(tenant, next)
   }
 }
+export { TenantMiddleware }
+export default TenantMiddleware

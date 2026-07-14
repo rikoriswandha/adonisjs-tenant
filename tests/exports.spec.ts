@@ -74,9 +74,13 @@ test.group('Package exports', () => {
     assert.isFunction(mod.PathResolver)
   })
 
-  test('subpath: ./middleware exports TenantMiddleware', async ({ assert }) => {
+  test('subpath: ./middleware default-exports TenantMiddleware for lazy loading', async ({
+    assert,
+  }) => {
+    // Dynamic import intentionally exercises the lazy middleware module boundary.
     const mod = await import('../src/middleware/tenant_middleware.ts')
-    assert.isFunction(mod.TenantMiddleware)
+    assert.isFunction(mod.default)
+    assert.strictEqual(mod.default, mod.TenantMiddleware)
   })
 
   test('subpath: ./guards exports defineTenantAuthConfig and tenantGuards', async ({ assert }) => {

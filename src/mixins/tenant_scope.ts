@@ -7,7 +7,7 @@ import type {
   ModelAdapterOptions,
   ModelQueryBuilderContract,
 } from '@adonisjs/lucid/types/model'
-import { getTenantContext, getTenantContextOrFail } from '../tenant_context.js'
+import { getTenantContextOrFail } from '../tenant_context.js'
 
 const SKIP_TENANT_SCOPE = '$adonisjs_tenant_skipScope'
 const MUTATION_METHODS = new Set(['update', 'delete', 'del', 'increment', 'decrement'])
@@ -39,19 +39,17 @@ function isScopeSkipped(query: ScopedQuery) {
 }
 
 function applyTenantScope(query: ScopedQuery) {
-  if (scopedBuilders.has(query)) {
-    return
-  }
-
   if (isScopeSkipped(query)) {
     return
   }
 
-  const ctx = getTenantContext()
-  if (ctx) {
-    query.where('tenant_id', ctx.id)
-    scopedBuilders.add(query)
+  const ctx = getTenantContextOrFail()
+  if (scopedBuilders.has(query)) {
+    return
   }
+
+  query.where('tenant_id', ctx.id)
+  scopedBuilders.add(query)
 }
 
 function applyTenantScopeOnce(query: ScopedQuery) {
@@ -90,17 +88,24 @@ function applyMutationScope<Q extends ScopedQuery>(query: Q): Q {
         return (...args: unknown[]) => applyMutationScope(value.apply(target, args) as Q)
       }
 
-      if (!MUTATION_METHODS.has(String(prop)) || typeof value !== 'function') {
+      if (typeof value !== 'function') {
         return value
       }
 
-      if (prop === 'update') {
-        return wrapUpdate(target, value as unknown as UpdateCallable)
+      if (MUTATION_METHODS.has(String(prop))) {
+        if (prop === 'update') {
+          return wrapUpdate(target, value as unknown as UpdateCallable)
+        }
+
+        return (...args: unknown[]) => {
+          applyTenantScopeOnce(target)
+          return (value as Callable).apply(target, args)
+        }
       }
 
       return (...args: unknown[]) => {
-        applyTenantScopeOnce(target)
-        return (value as Callable).apply(target, args)
+        const result = (value as Callable).apply(target, args)
+        return result === target ? receiver : result
       }
     },
   }) as Q
@@ -153,8 +158,8 @@ export function TenantScope<Model extends NormalizeConstructor<typeof BaseModel>
           return
         }
 
-        const ctx = getTenantContext()
-        if (ctx && !tenantIdsMatch(tenantId, ctx.id)) {
+        const ctx = getTenantContextOrFail()
+        if (!tenantIdsMatch(tenantId, ctx.id)) {
           throw new RuntimeException(
             `Cross-tenant write blocked: model tenant_id "${tenantId}" does not match current tenant "${ctx.id}". Call bypassTenantWriteCheck() on the model instance to bypass this check explicitly.`,
             { status: 403, code: 'E_CROSS_TENANT_WRITE' }

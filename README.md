@@ -178,6 +178,10 @@ class Post extends TenantScope(BaseModel) {
 // Queries are automatically scoped to the current tenant
 const posts = await Post.all()
 
+`TenantScope` fails closed: a read or mutation without an active tenant context throws
+`TenantNotResolvedError`. Use `withoutTenantScope()` or `forTenant()` only for explicit
+administrative access.
+
 // Bypass tenant scoping
 const allPosts = await Post.withoutTenantScope().exec()
 

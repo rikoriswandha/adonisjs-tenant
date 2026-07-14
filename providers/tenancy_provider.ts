@@ -1,7 +1,7 @@
 import type { ApplicationService } from '@adonisjs/core/types'
 import { TenantService } from '../src/tenant_service.js'
 import { extendAuthenticator } from '../src/extensions/authenticator.js'
-import { TenantMiddleware } from '../src/middleware/tenant_middleware.js'
+import TenantMiddleware from '../src/middleware/tenant_middleware.js'
 import { SubdomainResolver } from '../src/resolvers/subdomain_resolver.js'
 import { HeaderResolver } from '../src/resolvers/header_resolver.js'
 import { JwtResolver } from '../src/resolvers/jwt_resolver.js'
@@ -43,7 +43,7 @@ function createResolver(
  * with the IoC container and extends the authenticator
  * with tenant-aware capabilities.
  */
-export class TenancyProvider {
+class TenancyProvider {
   constructor(protected app: ApplicationService) {}
 
   /**
@@ -61,7 +61,6 @@ export class TenancyProvider {
    * - Reads tenancy config and creates resolver instances.
    * - Configures TenantMiddleware with the default resolver.
    * - Patches the AuthManager to create TenantAuthenticator instances.
-   * - Registers the 'tenant' middleware alias for use in route definitions.
    */
   async boot(): Promise<void> {
     const authManager = await this.app.container.make('auth.manager')
@@ -77,13 +76,8 @@ export class TenancyProvider {
         failOnMissing: true,
       })
     }
-
-    const router = await this.app.container.make('router')
-    router.named({
-      tenant: () =>
-        import('../src/middleware/tenant_middleware.js').then((m) => ({
-          default: m.TenantMiddleware,
-        })),
-    })
   }
 }
+
+export { TenancyProvider }
+export default TenancyProvider

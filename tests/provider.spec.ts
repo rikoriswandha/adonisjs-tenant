@@ -1,12 +1,16 @@
 import { test } from '@japa/runner'
-import { TenancyProvider } from '../providers/tenancy_provider.js'
+import { AppFactory } from '@adonisjs/core/factories/app'
+import TenancyProvider, {
+  TenancyProvider as NamedTenancyProvider,
+} from '../providers/tenancy_provider.js'
 import { TenantService } from '../src/tenant_service.js'
 import { extendAuthenticator } from '../src/extensions/authenticator.js'
 import type { ApplicationService } from '@adonisjs/core/types'
 
 test.group('TenancyProvider', () => {
-  test('export provider class', ({ assert }) => {
+  test('default-exports the provider class for AdonisJS lazy loading', ({ assert }) => {
     assert.isFunction(TenancyProvider)
+    assert.strictEqual(TenancyProvider, NamedTenancyProvider)
   })
 
   test('provider has register and boot methods', ({ assert }) => {
@@ -36,6 +40,61 @@ test.group('TenancyProvider', () => {
     assert.equal(bindingKey, 'tenant.service')
     const resolved = await bindingFactory()
     assert.strictEqual(resolved, TenantService)
+  })
+
+  test('boots without registering a redundant router middleware alias', async ({ assert }) => {
+    const requestedBindings: string[] = []
+    const authManager = {
+      config: { default: 'web', guards: {} },
+      createAuthenticator: (ctx: unknown) => ctx,
+    }
+    const app = {
+      container: {
+        singleton() {},
+        async make(binding: string) {
+          requestedBindings.push(binding)
+          if (binding === 'auth.manager') {
+            return authManager
+          }
+          throw new Error(`Unexpected container binding: ${binding}`)
+        },
+      },
+      config: {
+        get() {
+          return { default: '' }
+        },
+      },
+    } as unknown as ApplicationService
+
+    await new TenancyProvider(app).boot()
+
+    assert.deepEqual(requestedBindings, ['auth.manager'])
+  })
+
+  test('boots through AdonisJS provider lifecycle using the lazy default export', async ({
+    assert,
+  }) => {
+    const app = new AppFactory().create(new URL('../', import.meta.url), (id) => import(id))
+    app.useConfig({ tenancy: { default: '' } })
+    app.rcContents({
+      providers: [
+        // Dynamic import intentionally exercises AdonisJS's lazy provider module contract.
+        () => import('../providers/tenancy_provider.js'),
+      ],
+    })
+    await app.init()
+    app.container.singleton('auth.manager', () => ({
+      config: { default: 'web', guards: {} },
+      createAuthenticator: (ctx: unknown) => ctx,
+    }))
+
+    try {
+      await app.boot()
+      const service = await app.container.make('tenant.service')
+      assert.strictEqual(service, TenantService)
+    } finally {
+      await app.terminate()
+    }
   })
 })
 

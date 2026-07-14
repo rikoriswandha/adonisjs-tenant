@@ -1,6 +1,7 @@
 import { test } from '@japa/runner'
 import { column } from '@adonisjs/lucid/orm'
 import { BaseModel } from '@adonisjs/lucid/orm'
+import { Database } from '@adonisjs/lucid/database'
 import { RuntimeException } from '@adonisjs/core/exceptions'
 import type {
   AdapterContract,
@@ -10,9 +11,19 @@ import type {
   ModelQueryBuilderContract,
 } from '@adonisjs/lucid/types/model'
 import { TenantScope } from '../src/mixins/tenant_scope.js'
-import { getTenantContext, runWithTenant } from '../src/tenant_context.js'
+import { getTenantContext, runWithTenant, TenantNotResolvedError } from '../src/tenant_context.js'
 
 class PostModel extends TenantScope(BaseModel) {
+  @column({ isPrimary: true })
+  declare id: number
+
+  @column()
+  declare title: string
+}
+
+class DatabasePostModel extends TenantScope(BaseModel) {
+  static table = 'tenant_scope_database_posts'
+
   @column({ isPrimary: true })
   declare id: number
 
@@ -181,20 +192,27 @@ test.group('TenantScope', () => {
     assert.deepEqual(query.wheres, [['tenant_id', 'tenant-abc']])
   })
 
-  test('no scope applied when no tenant context', async ({ assert }) => {
+  test('read hooks fail closed when no tenant context exists', async ({ assert }) => {
     PostModel.boot()
-    const query = makeFakeQuery()
 
-    const ctx = getTenantContext()
-    assert.isUndefined(ctx)
-
-    await PostModel.$hooks.runner('before:find').run(query)
-
-    assert.isEmpty(query.wheres)
+    assert.isUndefined(getTenantContext())
+    await assert.rejects(
+      () => PostModel.$hooks.runner('before:find').run(makeFakeQuery()),
+      TenantNotResolvedError
+    )
+    await assert.rejects(
+      () => PostModel.$hooks.runner('before:fetch').run(makeFakeQuery()),
+      TenantNotResolvedError
+    )
+    await assert.rejects(
+      () => PostModel.$hooks.runner('before:paginate').run([makeFakeQuery(), makeFakeQuery()]),
+      TenantNotResolvedError
+    )
   })
 
   test('multiple models can use the mixin independently', ({ assert }) => {
     PostA.boot()
+
     PostB.boot()
 
     assert.isTrue(PostA.$hasColumn('tenant_id'))
@@ -203,6 +221,87 @@ test.group('TenantScope', () => {
     assert.isFunction(PostB.withoutTenantScope)
     assert.isFunction(PostA.forTenant)
     assert.isFunction(PostB.forTenant)
+  })
+
+  test('real Lucid reads and mutations fail closed without a tenant context', async ({
+    assert,
+  }) => {
+    const logger = {
+      trace() {},
+      debug() {},
+      info() {},
+      warn() {},
+      error() {},
+      fatal() {},
+    }
+    const emitter = {
+      hasListeners() {
+        return false
+      },
+      emit() {},
+    }
+    const database = new Database(
+      {
+        connection: 'sqlite',
+        connections: {
+          sqlite: {
+            client: 'sqlite3',
+            connection: { filename: ':memory:' },
+            useNullAsDefault: true,
+          },
+        },
+      },
+      logger as never,
+      emitter as never
+    )
+
+    try {
+      const connection = database.connection()
+      await connection.schema.createTable(DatabasePostModel.table, (table) => {
+        table.increments('id')
+        table.string('tenant_id')
+        table.string('title')
+      })
+      await connection
+        .insertQuery()
+        .table(DatabasePostModel.table)
+        .multiInsert([
+          { tenant_id: 'tenant-a', title: 'A' },
+          { tenant_id: 'tenant-b', title: 'B' },
+        ])
+      DatabasePostModel.useAdapter(database.modelAdapter())
+
+      const tenantAPosts = await runWithTenant(
+        { id: 'tenant-a', name: 'Tenant A', slug: 'tenant-a' },
+        () => DatabasePostModel.all()
+      )
+      assert.lengthOf(tenantAPosts, 1)
+      assert.equal(tenantAPosts[0].title, 'A')
+
+      await assert.rejects(() => DatabasePostModel.find(1), TenantNotResolvedError)
+      await assert.rejects(() => DatabasePostModel.all(), TenantNotResolvedError)
+      await assert.rejects(
+        () => DatabasePostModel.query().count('* as total'),
+        TenantNotResolvedError
+      )
+      await assert.rejects(() => DatabasePostModel.query().paginate(1, 10), TenantNotResolvedError)
+      assert.throws(
+        () => DatabasePostModel.query().where('title', 'A').update({ title: 'blocked' }),
+        TenantNotResolvedError
+      )
+      assert.throws(() => DatabasePostModel.query().delete(), TenantNotResolvedError)
+      const existingTenantPost = new DatabasePostModel()
+      existingTenantPost.tenant_id = 'tenant-a'
+      existingTenantPost.title = 'blocked'
+      await assert.rejects(() => existingTenantPost.save(), TenantNotResolvedError)
+
+      const unscopedPosts = await DatabasePostModel.withoutTenantScope()
+      assert.lengthOf(unscopedPosts, 2)
+      const tenantBPosts = await DatabasePostModel.forTenant('tenant-b')
+      assert.lengthOf(tenantBPosts, 1)
+    } finally {
+      await database.manager.closeAll()
+    }
   })
 
   test('paginate hook scopes both query and countQuery', async ({ assert }) => {
@@ -272,6 +371,18 @@ test.group('TenantScope', () => {
     )
     assert.equal(queries[4].updateCalls, 1)
     assert.equal(queries[5].updateCalls, 1)
+  })
+
+  test('mutation queries fail closed without tenant context, including chained mutations', ({
+    assert,
+  }) => {
+    useFakeAdapter()
+
+    assert.throws(() => PostModel.query().delete(), TenantNotResolvedError)
+    assert.throws(
+      () => PostModel.query().where('title', 'unscoped').update({ title: 'blocked' }),
+      TenantNotResolvedError
+    )
   })
 
   test('query proxy keeps mutation scope after clone', async ({ assert }) => {
