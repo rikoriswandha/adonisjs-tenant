@@ -111,20 +111,28 @@ function applyMutationScope<Q extends ScopedQuery>(query: Q): Q {
   }) as Q
 }
 
-export type TenantScopedModelContract<Model extends NormalizeConstructor<typeof BaseModel>> =
-  NormalizeConstructor<typeof BaseModel> & {
-    withoutTenantScope(): ModelQueryBuilderContract<LucidModel, InstanceType<Model>>
-    forTenant(tenantId: string | number): ModelQueryBuilderContract<LucidModel, InstanceType<Model>>
-    boot(): void
-    new (...args: ConstructorParameters<Model>): InstanceType<Model> & {
-      tenant_id: string | number
-      bypassTenantWriteCheck(): InstanceType<Model>
-    }
+type TenantScopedModelInstance<Model extends NormalizeConstructor<typeof BaseModel>> =
+  InstanceType<Model> & {
+    tenant_id: string | number
+    bypassTenantWriteCheck(): TenantScopedModelInstance<Model>
   }
 
+type TenantScopedStatic<Model extends NormalizeConstructor<typeof BaseModel>> = {
+  [Property in keyof Model]: Model[Property]
+}
+
+export type TenantScopedModelContract<Model extends NormalizeConstructor<typeof BaseModel>> =
+  TenantScopedStatic<Model> & {
+    withoutTenantScope(): ModelQueryBuilderContract<LucidModel, TenantScopedModelInstance<Model>>
+    forTenant(
+      tenantId: string | number
+    ): ModelQueryBuilderContract<LucidModel, TenantScopedModelInstance<Model>>
+    boot(): void
+    new (...args: ConstructorParameters<Model>): TenantScopedModelInstance<Model>
+  }
 export function TenantScope<Model extends NormalizeConstructor<typeof BaseModel>>(
   superclass: Model
-) {
+): TenantScopedModelContract<Model> {
   const originalQuery = (superclass as typeof BaseModel).query
 
   class TenantScoped extends superclass {
@@ -220,5 +228,5 @@ export function TenantScope<Model extends NormalizeConstructor<typeof BaseModel>
     }
   }
 
-  return TenantScoped
+  return TenantScoped as unknown as TenantScopedModelContract<Model>
 }

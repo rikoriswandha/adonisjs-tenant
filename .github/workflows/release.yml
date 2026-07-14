@@ -30,7 +30,7 @@ jobs:
         env:
           NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
       - name: Install
-        run: npm install
+        run: npm ci
       - name: Release
         run: npm run release -- --ci
         env:

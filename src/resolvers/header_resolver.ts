@@ -3,8 +3,8 @@
 | Header Tenant Resolver
 |--------------------------------------------------------------------------
 |
-| Resolves the current tenant from an HTTP header (default: X-Tenant-ID).
-| The header value is used as the tenant id, name, and slug.
+| Resolves a tenant only through a configured, trusted lookup or map.
+| A request header is an identifier, never authorization.
 |
 */
 
@@ -26,8 +26,8 @@ export type HeaderResolverOptions = {
   tenants?: Record<string, Omit<TenantContext, 'slug'>>
 
   /**
-   * A callback to look up a tenant by header value.
-   * Receives the header value and should return a tenant or null.
+   * A trusted callback to look up and validate a tenant by header value.
+   * Receives untrusted client input and must return a tenant or null.
    */
   lookup?: (headerValue: string) => Promise<TenantContext | null> | TenantContext | null
 }
@@ -56,10 +56,6 @@ export class HeaderResolver implements TenantResolverContract {
       return null
     }
 
-    return {
-      id: headerValue,
-      name: headerValue,
-      slug: headerValue,
-    }
+    return null
   }
 }

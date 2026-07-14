@@ -1,15 +1,22 @@
 import { test } from '@japa/runner'
 import { BaseModel, column } from '@adonisjs/lucid/orm'
+import { Database } from '@adonisjs/lucid/database'
+import { Secret } from '@adonisjs/core/helpers'
+import type { Hash } from '@adonisjs/core/hash'
 import { withTenantAuthFinder } from '../../src/mixins/tenant_auth_finder.js'
-import { runWithTenant, getTenantContext } from '../../src/tenant_context.js'
+import {
+  getTenantContext,
+  runWithTenant,
+  TenantNotResolvedError,
+} from '../../src/tenant_context.js'
+
+const unusedHash = (() => {
+  throw new Error('Hash is not used in mixin composition tests')
+}) as () => Hash
 
 test.group('withTenantAuthFinder', () => {
   test('mixin composes TenantScope and withAuthFinder', async ({ assert }) => {
-    const hash = () =>
-      ({
-        make: async (value: string) => `hashed:${value}`,
-        verify: async (_: string, value: string) => value === 'secret',
-      }) as any
+    const hash = unusedHash
 
     class User extends withTenantAuthFinder(hash)(BaseModel) {
       @column({ isPrimary: true })
@@ -31,7 +38,7 @@ test.group('withTenantAuthFinder', () => {
   })
 
   test('findForAuth scopes to tenant when context is active', async ({ assert }) => {
-    const hash = () => ({ make: async (v: string) => v, verify: async () => true }) as any
+    const hash = unusedHash
 
     class User extends withTenantAuthFinder(hash)(BaseModel) {
       @column({ isPrimary: true })
@@ -52,7 +59,7 @@ test.group('withTenantAuthFinder', () => {
   })
 
   test('findForAuth works without tenant context', async ({ assert }) => {
-    const hash = () => ({ make: async (v: string) => v, verify: async () => true }) as any
+    const hash = unusedHash
 
     class User extends withTenantAuthFinder(hash)(BaseModel) {
       @column({ isPrimary: true })
@@ -68,22 +75,87 @@ test.group('withTenantAuthFinder', () => {
     assert.isFunction(User.findForAuth)
   })
 
-  test('TenantDbAccessTokensProvider injects tenant_id on create', async ({ assert }) => {
-    const hash = () => ({ make: async (v: string) => v, verify: async () => true }) as any
+  test('access tokens are bound to their creating tenant', async ({ assert }) => {
+    const hash = unusedHash
 
     class User extends withTenantAuthFinder(hash)(BaseModel) {
       @column({ isPrimary: true })
       declare id: number
-
-      @column()
-      declare email: string
-
-      @column()
-      declare password: string
     }
 
-    assert.isDefined(User.accessTokens)
-    assert.isFunction((User.accessTokens as any).create)
+    const logger = {
+      trace() {},
+      debug() {},
+      info() {},
+      warn() {},
+      error() {},
+      fatal() {},
+    }
+    const emitter = {
+      hasListeners() {
+        return false
+      },
+      emit() {},
+    }
+    const database = new Database(
+      {
+        connection: 'sqlite',
+        connections: {
+          sqlite: {
+            client: 'sqlite3',
+            connection: { filename: ':memory:' },
+            useNullAsDefault: true,
+          },
+        },
+      },
+      logger as never,
+      emitter as never
+    )
+
+    try {
+      const connection = database.connection()
+      await connection.schema.createTable('auth_access_tokens', (table) => {
+        table.increments('id')
+        table.integer('tokenable_id').notNullable()
+        table.string('type').notNullable()
+        table.string('name').nullable()
+        table.string('hash').notNullable()
+        table.text('abilities').notNullable()
+        table.string('tenant_id').notNullable().index()
+        table.timestamp('created_at').notNullable()
+        table.timestamp('updated_at').notNullable()
+        table.timestamp('last_used_at').nullable()
+        table.timestamp('expires_at').nullable()
+      })
+      User.useAdapter(database.modelAdapter())
+
+      const user = new User()
+      user.id = 1
+      const tenantA = { id: 'tenant-a', name: 'Tenant A', slug: 'tenant-a' }
+      const tenantB = { id: 'tenant-b', name: 'Tenant B', slug: 'tenant-b' }
+      const token = await runWithTenant(tenantA, () => User.accessTokens.create(user))
+
+      const tokenRow = await connection
+        .query()
+        .from('auth_access_tokens')
+        .where('id', token.identifier.toString())
+        .first()
+      assert.equal(tokenRow.tenant_id, tenantA.id)
+
+      const tokenValue = new Secret(token.value!.release())
+      const verifiedForTenantA = await runWithTenant(tenantA, () =>
+        User.accessTokens.verify(tokenValue)
+      )
+      assert.isNotNull(verifiedForTenantA)
+
+      const verifiedForTenantB = await runWithTenant(tenantB, () =>
+        User.accessTokens.verify(tokenValue)
+      )
+      assert.isNull(verifiedForTenantB)
+      await assert.rejects(() => User.accessTokens.create(user), TenantNotResolvedError)
+    } finally {
+      await database.manager.closeAll()
+    }
   })
 
   test('accessTokens getter returns different instances for different models', async ({

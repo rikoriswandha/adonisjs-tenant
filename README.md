@@ -58,13 +58,17 @@ const resolver = new SubdomainResolver({
 })
 ```
 
-**HeaderResolver** — reads tenant from HTTP header (default: `X-Tenant-ID`):
+**HeaderResolver** — identifies a tenant from an HTTP header (default: `X-Tenant-ID`). Configure a trusted lookup or an allowlist; headers are untrusted client input and do not authorize access:
 
 ```ts
 import { HeaderResolver } from 'adonisjs-tenant/resolvers'
 
 const resolver = new HeaderResolver({
   header: 'X-Tenant-ID',
+  lookup: async (tenantId) => {
+    const tenant = await Tenant.find(tenantId)
+    return tenant ? { id: tenant.id, name: tenant.name, slug: tenant.slug } : null
+  },
 })
 ```
 
@@ -231,7 +235,9 @@ class User extends withTenantAuthFinder(hash) {
 }
 ```
 
-This combines `TenantScope` with `withAuthFinder`, scopes `findForAuth` queries to the active tenant, and injects `tenant_id` into access tokens on creation.
+This combines `TenantScope` with `withAuthFinder`, scopes `findForAuth` queries to the active tenant, and binds each newly created access token to that tenant. Tokens are invalid outside their creating tenant.
+
+The generated migration makes `auth_access_tokens.tenant_id` non-null. Before applying it to a table that already contains tokens, revoke those tokens or use a staged migration to backfill every row with its owning tenant; unbound legacy tokens must not remain valid.
 
 ### TenantAuthenticator extension
 

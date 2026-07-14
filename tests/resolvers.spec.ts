@@ -102,14 +102,11 @@ test.group('HeaderResolver', () => {
     } as unknown as HttpContext
   }
 
-  test('resolve tenant from default header', async ({ assert }) => {
+  test('rejects an unvalidated header value', async ({ assert }) => {
     const resolver = new HeaderResolver()
     const ctx = mockContext('tenant-42')
     const result = await resolver.resolve(ctx)
-    assert.isNotNull(result)
-    assert.equal(result!.id, 'tenant-42')
-    assert.equal(result!.name, 'tenant-42')
-    assert.equal(result!.slug, 'tenant-42')
+    assert.isNull(result)
   })
 
   test('return null when header is missing', async ({ assert }) => {
@@ -120,21 +117,18 @@ test.group('HeaderResolver', () => {
   })
 
   test('use custom header name', async ({ assert }) => {
-    function mockCustomContext(headerValue: string | undefined): HttpContext {
-      return {
-        request: {
-          hostname: () => null,
-          header: (key: string) => (key === 'X-My-Tenant' ? headerValue : undefined),
-          url: () => '/',
-        },
-        response: {} as any,
-        logger: {} as any,
-        containerResolver: {} as any,
-      } as unknown as HttpContext
-    }
+    const ctx = {
+      request: {
+        hostname: () => null,
+        header: (key: string) => (key === 'X-My-Tenant' ? 'custom-tenant' : undefined),
+        url: () => '/',
+      },
+    } as unknown as HttpContext
 
-    const resolver = new HeaderResolver({ header: 'X-My-Tenant' })
-    const ctx = mockCustomContext('custom-tenant')
+    const resolver = new HeaderResolver({
+      header: 'X-My-Tenant',
+      tenants: { 'custom-tenant': { id: 1, name: 'Custom' } },
+    })
     const result = await resolver.resolve(ctx)
     assert.isNotNull(result)
     assert.equal(result!.slug, 'custom-tenant')

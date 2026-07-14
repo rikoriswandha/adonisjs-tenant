@@ -95,9 +95,10 @@ test.group('Package exports', () => {
     assert.isFunction(mod.tenantAwareBasicAuthGuard)
   })
 
-  test('subpath: ./mixins exports TenantScope', async ({ assert }) => {
-    const mod = await import('../src/mixins/tenant_scope.ts')
+  test('subpath: ./mixins exports both documented mixins', async ({ assert }) => {
+    const mod = await import('../src/mixins/index.ts')
     assert.isFunction(mod.TenantScope)
+    assert.isFunction(mod.withTenantAuthFinder)
   })
 
   test('subpath: ./resolvers exports all resolver implementations', async ({ assert }) => {

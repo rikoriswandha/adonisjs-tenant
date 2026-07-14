@@ -44,9 +44,11 @@ const tenancyConfig = defineTenancyConfig({
       options: {
         /**
          * The HTTP header name to read the tenant identifier from.
-         * @default 'X-Tenant-ID'
+         * Configure the allowlist below or replace it with a lookup callback.
+         * Headers identify tenants; authorize the requesting user separately.
          */
         header: 'X-Tenant-ID',
+        tenants: {},
       },
     },
   },
