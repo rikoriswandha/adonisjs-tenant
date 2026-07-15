@@ -41,7 +41,12 @@ export type SubdomainResolverOptions = {
  * from the request hostname.
  */
 export class SubdomainResolver implements TenantResolverContract {
-  constructor(private options: SubdomainResolverOptions = {}) {}
+  constructor(private options: SubdomainResolverOptions = {}) {
+    const levels = options.levels
+    if (levels !== undefined && (!Number.isInteger(levels) || levels < 1)) {
+      throw new Error('Subdomain resolver levels must be a positive integer')
+    }
+  }
 
   async resolve(ctx: HttpContext): Promise<TenantContext | null> {
     const hostname = ctx.request.hostname()
@@ -50,9 +55,9 @@ export class SubdomainResolver implements TenantResolverContract {
     const levels = this.options.levels ?? 1
     const parts = hostname.split('.')
 
-    // Need at least (levels + 1) parts to extract a subdomain.
-    // e.g., "tenant.example.com" has 3 parts, level 1 → "tenant"
-    if (parts.length < levels + 1) return null
+    // The documented heuristic reserves the final two labels as the apex
+    // domain. A hostname without an additional label has no subdomain.
+    if (parts.length < levels + 2) return null
 
     const subdomain = parts.slice(0, levels).join('.')
 

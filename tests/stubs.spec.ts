@@ -32,7 +32,10 @@ test.group('Stubs', () => {
     assert.isTrue(content.includes("import { BaseSchema } from '@adonisjs/lucid/schema'"))
     assert.isTrue(content.includes("protected tableName = 'auth_access_tokens'"))
     assert.isTrue(content.includes('this.schema.alterTable(this.tableName, (table) =>'))
-    assert.isTrue(content.includes("table.string('tenant_id').notNullable().index()"))
+    assert.isTrue(content.includes("table.string('tenant_id').nullable().index()"))
+    assert.isFalse(content.includes("table.string('tenant_id').notNullable().index()"))
+    assert.isTrue(content.includes('Backfill them deliberately before'))
+    assert.isTrue(content.includes('separate NOT NULL constraint migration'))
 
     assert.isTrue(content.includes('async up()'))
     assert.isTrue(content.includes('async down()'))

@@ -30,9 +30,11 @@ export type {
   TenantUserProviderContract,
   TenantGuardFactory,
 } from './src/types.js'
+export type {} from './src/contracts.js'
 
 // ─── Config ─────────────────────────────────────────────────────
 export { defineTenancyConfig } from './src/define_config.js'
+export { TenantDatabaseExecutor } from './src/tenant_database_executor.js'
 
 // ─── Middleware ──────────────────────────────────────────────────
 export { TenantMiddleware } from './src/middleware/tenant_middleware.js'

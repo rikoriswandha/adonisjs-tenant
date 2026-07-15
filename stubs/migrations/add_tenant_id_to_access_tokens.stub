@@ -10,7 +10,9 @@ export default class extends BaseSchema {
 
   async up() {
     this.schema.alterTable(this.tableName, (table) => {
-      table.string('tenant_id').notNullable().index()
+      // Existing rows have no tenant binding. Backfill them deliberately before
+      // adding a separate NOT NULL constraint migration.
+      table.string('tenant_id').nullable().index()
     })
   }
 

@@ -1,5 +1,5 @@
 import { execFileSync } from 'node:child_process'
-import { access, mkdtemp, rm, writeFile } from 'node:fs/promises'
+import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -10,6 +10,15 @@ let tarball
 
 function run(command, args, cwd) {
   execFileSync(command, args, { cwd, stdio: 'inherit' })
+}
+
+async function assertFileIncludes(file, expected) {
+  const content = await readFile(file, 'utf8')
+  for (const text of expected) {
+    if (!content.includes(text)) {
+      throw new Error(`Expected ${file} to include ${JSON.stringify(text)}`)
+    }
+  }
 }
 
 try {
@@ -41,9 +50,9 @@ try {
           '@types/yargs-parser': '^21.0.0',
           '@vinejs/vine': '^4.0.0',
           'json-schema': '^0.4.0',
-          luxon: '^3.0.0',
-          sqlite3: '^6.0.1',
-          typescript: '^5.9.3',
+          'luxon': '^3.0.0',
+          'sqlite3': '^6.0.1',
+          'typescript': '^5.9.3',
         },
       },
       null,
@@ -68,13 +77,51 @@ try {
   )
   await writeFile(
     join(tempRoot, 'index.ts'),
-    `import TenantMiddleware from '@rikology/adonisjs-tenant/middleware'
-import TenancyProvider from '@rikology/adonisjs-tenant/providers/tenancy_provider'
-import { TenantScope, withTenantAuthFinder } from '@rikology/adonisjs-tenant/mixins'
+    `import type { Authenticator } from '@adonisjs/auth'
+import type { GuardFactory } from '@adonisjs/auth/types'
+import type { HttpContext } from '@adonisjs/core/http'
+import type { TenantContext } from '@rikology/adonisjs-tenant'
+import {
+  TenantDatabaseExecutor,
+  TenantMiddleware,
+  TenantScope,
+  TenantService,
+  defineTenancyConfig,
+  getTenantContext,
+  getTenantContextOrFail,
+  runWithTenant,
+} from '@rikology/adonisjs-tenant'
+import { TenantAuthenticator, extendAuthenticator } from '@rikology/adonisjs-tenant/extensions'
+import { defineTenantAuthConfig, tenantGuards } from '@rikology/adonisjs-tenant/guards'
+import { withTenantAuthFinder } from '@rikology/adonisjs-tenant/mixins'
+import { HeaderResolver, JwtResolver, PathResolver, SubdomainResolver } from '@rikology/adonisjs-tenant/resolvers'
+import { TenantUserProvider } from '@rikology/adonisjs-tenant/user_providers'
 
+declare const ctx: HttpContext
+declare const auth: Authenticator<Record<string, GuardFactory>>
+
+const contextTenant: TenantContext | undefined = ctx.tenant
+const authenticatorTenant: TenantContext | undefined = auth.tenant
+
+void contextTenant
+void authenticatorTenant
+void TenantDatabaseExecutor
 void TenantMiddleware
-void TenancyProvider
 void TenantScope
+void TenantService
+void getTenantContext
+void getTenantContextOrFail
+void runWithTenant
+void TenantAuthenticator
+void TenantUserProvider
+void HeaderResolver
+void JwtResolver
+void PathResolver
+void SubdomainResolver
+void defineTenancyConfig
+void defineTenantAuthConfig
+void extendAuthenticator
+void tenantGuards
 void withTenantAuthFinder
 `
   )
@@ -82,6 +129,7 @@ void withTenantAuthFinder
     join(tempRoot, 'verify.mjs'),
     `import TenantMiddleware from '@rikology/adonisjs-tenant/middleware'
 import TenancyProvider from '@rikology/adonisjs-tenant/providers/tenancy_provider'
+import { TenantDatabaseExecutor } from '@rikology/adonisjs-tenant/database'
 import { HeaderResolver } from '@rikology/adonisjs-tenant/resolvers'
 import { TenantScope, withTenantAuthFinder } from '@rikology/adonisjs-tenant/mixins'
 import { BaseModel } from '@adonisjs/lucid/orm'
@@ -90,6 +138,7 @@ import { Database } from '@adonisjs/lucid/database'
 if (
   typeof TenantMiddleware !== 'function' ||
   typeof TenancyProvider !== 'function' ||
+  typeof TenantDatabaseExecutor !== 'function' ||
   typeof TenantScope !== 'function' ||
   typeof withTenantAuthFinder !== 'function'
 ) {
@@ -196,21 +245,27 @@ try {
   const appRoot = join(tempRoot, 'app')
   run(
     'npm',
-    [
-      'init',
-      'adonisjs@latest',
-      '--',
-      appRoot,
-      '--kit=api',
-      '--pkg=npm',
-      '--skip-migrations',
-    ],
+    ['init', 'adonisjs@latest', '--', appRoot, '--kit=api', '--pkg=npm', '--skip-migrations'],
     tempRoot
   )
   run('npm', ['install', tarball], appRoot)
+  run(process.execPath, ['ace', 'configure', '@adonisjs/auth', '--guard=access_tokens'], appRoot)
   run(process.execPath, ['ace', 'configure', '@rikology/adonisjs-tenant'], appRoot)
-  await access(join(appRoot, 'config', 'tenancy.ts'))
-  run(process.execPath, ['ace', 'list'], appRoot)
+  await assertFileIncludes(join(appRoot, 'adonisrc.ts'), [
+    '@rikology/adonisjs-tenant/providers/tenancy_provider',
+  ])
+  await assertFileIncludes(join(appRoot, 'start', 'kernel.ts'), [
+    "tenant: () => import('@rikology/adonisjs-tenant/middleware')",
+    '@rikology/adonisjs-tenant/middleware',
+  ])
+  await assertFileIncludes(join(appRoot, 'config', 'tenancy.ts'), [
+    "from '@rikology/adonisjs-tenant'",
+    'failOnMissing:',
+    'default:',
+    'tenants:',
+  ])
+  run(join(appRoot, 'node_modules', '.bin', tsc), ['--noEmit'], appRoot)
+  run(process.execPath, ['ace', 'migration:status'], appRoot)
 } finally {
   await rm(tempRoot, { recursive: true, force: true })
   if (tarball) {

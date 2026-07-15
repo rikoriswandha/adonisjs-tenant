@@ -27,5 +27,5 @@ export function runWithTenant<T>(
   tenant: TenantContext,
   callback: () => T | Promise<T>
 ): Promise<T> {
-  return Promise.resolve(storage.run(tenant, callback))
+  return Promise.resolve().then(() => storage.run(tenant, callback))
 }

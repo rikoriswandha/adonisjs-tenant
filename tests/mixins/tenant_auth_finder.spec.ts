@@ -58,6 +58,81 @@ test.group('withTenantAuthFinder', () => {
     })
   })
 
+  test('findForAuth selects the matching tenant row for a shared UID', async ({ assert }) => {
+    class User extends withTenantAuthFinder(unusedHash)(BaseModel) {
+      static table = 'users'
+
+      @column({ isPrimary: true })
+      declare id: number
+
+      @column()
+      declare email: string
+
+      @column()
+      declare password: string
+
+      @column()
+      declare tenant_id: string
+    }
+
+    const database = new Database(
+      {
+        connection: 'sqlite',
+        connections: {
+          sqlite: {
+            client: 'sqlite3',
+            connection: { filename: ':memory:' },
+            useNullAsDefault: true,
+          },
+        },
+      },
+      {
+        trace() {},
+        debug() {},
+        info() {},
+        warn() {},
+        error() {},
+        fatal() {},
+      } as never,
+      {
+        hasListeners() {
+          return false
+        },
+        emit() {},
+      } as never
+    )
+
+    try {
+      const connection = database.connection()
+      await connection.schema.createTable('users', (table) => {
+        table.increments('id')
+        table.string('email').notNullable()
+        table.string('password').notNullable()
+        table.string('tenant_id').notNullable()
+      })
+      await connection.table('users').multiInsert([
+        { email: 'shared@example.com', password: 'hash-a', tenant_id: 'tenant-a' },
+        { email: 'shared@example.com', password: 'hash-b', tenant_id: 'tenant-b' },
+      ])
+      User.useAdapter(database.modelAdapter())
+
+      const userInTenantA = (await runWithTenant(
+        { id: 'tenant-a', name: 'Tenant A', slug: 'tenant-a' },
+        () => User.findForAuth(['email'], 'shared@example.com')
+      )) as InstanceType<typeof User> | null
+      const userInTenantB = (await runWithTenant(
+        { id: 'tenant-b', name: 'Tenant B', slug: 'tenant-b' },
+        () => User.findForAuth(['email'], 'shared@example.com')
+      )) as InstanceType<typeof User> | null
+
+      assert.equal(userInTenantA?.tenant_id, 'tenant-a')
+      assert.equal(userInTenantB?.tenant_id, 'tenant-b')
+      assert.notEqual(userInTenantA?.id, userInTenantB?.id)
+    } finally {
+      await database.manager.closeAll()
+    }
+  })
+
   test('findForAuth works without tenant context', async ({ assert }) => {
     const hash = unusedHash
 
@@ -144,12 +219,12 @@ test.group('withTenantAuthFinder', () => {
 
       const tokenValue = new Secret(token.value!.release())
       const verifiedForTenantA = await runWithTenant(tenantA, () =>
-        User.accessTokens.verify(tokenValue)
+        User.accessTokens.verifyForCurrentTenant(tokenValue)
       )
       assert.isNotNull(verifiedForTenantA)
 
       const verifiedForTenantB = await runWithTenant(tenantB, () =>
-        User.accessTokens.verify(tokenValue)
+        User.accessTokens.verifyForCurrentTenant(tokenValue)
       )
       assert.isNull(verifiedForTenantB)
       await assert.rejects(() => User.accessTokens.create(user), TenantNotResolvedError)

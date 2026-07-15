@@ -26,6 +26,16 @@ test.group('TenantContext', () => {
     assert.isUndefined(getTenantContext())
   })
 
+  test('normalizes synchronous callback throws into promise rejections', async ({ assert }) => {
+    const result = runWithTenant(acme, () => {
+      assert.equal(getTenantContext(), acme)
+      throw new Error('tenant callback failed')
+    })
+
+    await assert.rejects(() => result, 'tenant callback failed')
+    assert.isUndefined(getTenantContext())
+  })
+
   test('nested runWithTenant calls use the inner context', async ({ assert }) => {
     await runWithTenant(acme, async () => {
       assert.equal(getTenantContext(), acme)

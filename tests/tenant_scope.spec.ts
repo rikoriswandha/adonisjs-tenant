@@ -29,6 +29,12 @@ class DatabasePostModel extends TenantScope(BaseModel) {
 
   @column()
   declare title: string
+
+  @column()
+  declare views: number
+
+  @column()
+  declare stock: number
 }
 
 class PostA extends TenantScope(BaseModel) {
@@ -223,9 +229,7 @@ test.group('TenantScope', () => {
     assert.isFunction(PostB.forTenant)
   })
 
-  test('real Lucid reads and mutations fail closed without a tenant context', async ({
-    assert,
-  }) => {
+  test('real Lucid operations fail closed and scope tenant mutations', async ({ assert }) => {
     const logger = {
       trace() {},
       debug() {},
@@ -261,13 +265,15 @@ test.group('TenantScope', () => {
         table.increments('id')
         table.string('tenant_id')
         table.string('title')
+        table.integer('views')
+        table.integer('stock')
       })
       await connection
         .insertQuery()
         .table(DatabasePostModel.table)
         .multiInsert([
-          { tenant_id: 'tenant-a', title: 'A' },
-          { tenant_id: 'tenant-b', title: 'B' },
+          { tenant_id: 'tenant-a', title: 'A', views: 0, stock: 2 },
+          { tenant_id: 'tenant-b', title: 'A', views: 0, stock: 2 },
         ])
       DatabasePostModel.useAdapter(database.modelAdapter())
 
@@ -295,8 +301,27 @@ test.group('TenantScope', () => {
       existingTenantPost.title = 'blocked'
       await assert.rejects(() => existingTenantPost.save(), TenantNotResolvedError)
 
+      await runWithTenant({ id: 'tenant-a', name: 'Tenant A', slug: 'tenant-a' }, async () => {
+        await DatabasePostModel.query()
+          .where('title', 'A')
+          .where('stock', '>', 0)
+          .update({ title: 'updated' })
+        await DatabasePostModel.query().where('stock', '>', 0).increment('views', 1)
+        await DatabasePostModel.query().where('stock', '>', 0).decrement('stock', 1)
+        await DatabasePostModel.query().where('title', 'updated').delete()
+      })
+
+      const postsAfterScopedMutations =
+        await DatabasePostModel.withoutTenantScope().orderBy('tenant_id')
+      assert.lengthOf(postsAfterScopedMutations, 1)
+      const tenantBPost = postsAfterScopedMutations[0] as DatabasePostModel
+      assert.equal(tenantBPost.tenant_id, 'tenant-b')
+      assert.equal(tenantBPost.title, 'A')
+      assert.equal(tenantBPost.views, 0)
+      assert.equal(tenantBPost.stock, 2)
+
       const unscopedPosts = await DatabasePostModel.withoutTenantScope()
-      assert.lengthOf(unscopedPosts, 2)
+      assert.lengthOf(unscopedPosts, 1)
       const tenantBPosts = await DatabasePostModel.forTenant('tenant-b')
       assert.lengthOf(tenantBPosts, 1)
     } finally {
@@ -395,7 +420,9 @@ test.group('TenantScope', () => {
     })
   })
 
-  test('withoutTenantScope bypasses mutation scoping', async ({ assert }) => {
+  test('withoutTenantScope disables only the mixin predicate; host policy remains external', async ({
+    assert,
+  }) => {
     useFakeAdapter()
 
     await runWithTenant({ id: 'tenant-bypass', name: 'Bypass', slug: 'bypass' }, async () => {
@@ -406,7 +433,7 @@ test.group('TenantScope', () => {
     })
   })
 
-  test('forTenant uses explicit tenant and bypasses current context hook', async ({ assert }) => {
+  test('forTenant selects an explicit tenant without authorizing it', async ({ assert }) => {
     useFakeAdapter()
 
     await runWithTenant({ id: 'tenant-current', name: 'Current', slug: 'current' }, async () => {

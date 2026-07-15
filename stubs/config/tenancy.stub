@@ -1,7 +1,7 @@
 {{{
   exports({ to: app.configPath('tenancy.ts') })
 }}}
-import { defineTenancyConfig } from 'adonisjs-tenant'
+import { defineTenancyConfig } from '@rikology/adonisjs-tenant'
 
 const tenancyConfig = defineTenancyConfig({
   /**
@@ -9,6 +9,12 @@ const tenancyConfig = defineTenancyConfig({
    * Available strategies: 'subdomain' | 'header' | 'jwt' | 'path'
    */
   default: 'subdomain',
+
+  /**
+   * Return a 404 when a request does not resolve to a tenant.
+   * @default true
+   */
+  failOnMissing: true,
 
   /**
    * Configured tenant resolver strategies.

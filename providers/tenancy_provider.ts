@@ -63,19 +63,29 @@ class TenancyProvider {
    * - Patches the AuthManager to create TenantAuthenticator instances.
    */
   async boot(): Promise<void> {
+    const tenancyConfig = this.app.config.get<TenancyConfig | undefined>('tenancy')
+    const defaultTenantName = tenancyConfig?.default
+
+    if (typeof defaultTenantName !== 'string' || defaultTenantName.trim() === '') {
+      throw new Error(
+        'Invalid tenancy configuration: "default" must select a resolver configured in "tenants".'
+      )
+    }
+
+    const defaultTenant = tenancyConfig?.tenants?.[defaultTenantName]
+    if (!defaultTenant) {
+      throw new Error(
+        `Invalid tenancy configuration: default resolver "${defaultTenantName}" is not configured in "tenants".`
+      )
+    }
+
     const authManager = await this.app.container.make('auth.manager')
     extendAuthenticator(authManager)
 
-    const tenancyConfig = this.app.config.get<TenancyConfig>('tenancy', { default: '' })
-    const defaultTenantName = tenancyConfig.default
-    const defaultTenant = tenancyConfig.tenants?.[defaultTenantName]
-
-    if (defaultTenant) {
-      TenantMiddleware.configure({
-        resolver: createResolver(defaultTenant.resolver, defaultTenant.options),
-        failOnMissing: true,
-      })
-    }
+    TenantMiddleware.configure({
+      resolver: createResolver(defaultTenant.resolver, defaultTenant.options),
+      failOnMissing: tenancyConfig.failOnMissing,
+    })
   }
 }
 

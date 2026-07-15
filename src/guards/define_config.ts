@@ -9,7 +9,7 @@ export { tenantAwareSessionGuard, tenantAwareAccessTokensGuard, tenantAwareBasic
  *
  * @example
  * ```ts
- * import { tenantGuards } from 'adonisjs-tenant/guards/define_config'
+ * import { tenantGuards } from '@rikology/adonisjs-tenant/guards'
  *
  * const authConfig = defineTenantAuthConfig({
  *   default: 'web',
@@ -33,7 +33,7 @@ export const tenantGuards = {
  *
  * @example
  * ```ts
- * import { defineTenantAuthConfig } from 'adonisjs-tenant/guards/define_config'
+ * import { defineTenantAuthConfig } from '@rikology/adonisjs-tenant/guards'
  *
  * const authConfig = defineTenantAuthConfig({
  *   default: 'web',

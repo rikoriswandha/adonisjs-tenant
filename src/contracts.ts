@@ -1,4 +1,4 @@
-import type { TenantContext } from './types.ts'
+import type { TenantContext } from './types.js'
 import type {} from '@adonisjs/auth'
 import type { GuardFactory } from '@adonisjs/auth/types'
 

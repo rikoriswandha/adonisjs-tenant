@@ -12,16 +12,19 @@ export class TenantUserProvider<UserModel extends LucidModel> implements TenantU
 
   async findById(
     tenant: TenantContext,
-    identifier: string | number
+    identifier: string | number | BigInt
   ): Promise<InstanceType<UserModel> | null> {
+    const primaryKey = this.userModel.primaryKey
+    const primaryKeyColumn = this.userModel.$getColumn(primaryKey)?.columnName ?? primaryKey
+    const databaseIdentifier = String(identifier)
     const user = await this.userModel
       .query()
       .innerJoin(
         this.tenantUserPivot,
-        `${this.userModel.table}.id`,
+        `${this.userModel.table}.${primaryKeyColumn}`,
         `${this.tenantUserPivot}.user_id`
       )
-      .where(`${this.userModel.table}.id`, identifier)
+      .where(`${this.userModel.table}.${primaryKeyColumn}`, databaseIdentifier)
       .where(`${this.tenantUserPivot}.tenant_id`, tenant.id)
       .first()
 
@@ -30,7 +33,7 @@ export class TenantUserProvider<UserModel extends LucidModel> implements TenantU
 
   async getUserFor(
     tenant: TenantContext,
-    identifier: string | number
+    identifier: string | number | BigInt
   ): Promise<InstanceType<UserModel>> {
     const user = await this.findById(tenant, identifier)
 

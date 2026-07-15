@@ -1,12 +1,19 @@
-import type { TenancyConfig } from './types.ts'
+import type { TenantConfig, TenancyConfig } from './types.ts'
+
+type DefinedTenancyConfig<Tenants extends Record<string, TenantConfig>> = Omit<
+  TenancyConfig,
+  'default' | 'tenants'
+> & {
+  default: Extract<keyof Tenants, string>
+  tenants: Tenants
+}
 
 /**
- * Define the configuration for the tenancy package.
- * This is an identity function that validates the config shape
- * and provides full type inference.
+ * Define tenancy configuration with a default resolver key that must exist in
+ * the configured resolver map.
  */
-export function defineTenancyConfig<UserConfig extends TenancyConfig>(
-  config: UserConfig
-): UserConfig {
+export function defineTenancyConfig<const Tenants extends Record<string, TenantConfig>>(
+  config: DefinedTenancyConfig<Tenants>
+): DefinedTenancyConfig<Tenants> {
   return config
 }

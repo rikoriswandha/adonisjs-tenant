@@ -79,12 +79,17 @@ export class JwtResolver implements TenantResolverContract {
     const tenantClaim = this.options.tenantClaim ?? 'tenant_id'
     const tenantId = payload[tenantClaim]
 
-    if (!tenantId) return null
-
-    return {
-      id: tenantId,
-      name: String(tenantId),
-      slug: String(tenantId),
+    if (
+      (typeof tenantId === 'string' && tenantId.length > 0) ||
+      (typeof tenantId === 'number' && Number.isFinite(tenantId))
+    ) {
+      return {
+        id: tenantId,
+        name: String(tenantId),
+        slug: String(tenantId),
+      }
     }
+
+    return null
   }
 }

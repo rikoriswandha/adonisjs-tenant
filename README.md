@@ -1,40 +1,38 @@
 # @rikology/adonisjs-tenant
 
-Multitenancy library for AdonisJS v7. Provides tenant-aware authentication guards and ORM scoping via AsyncLocalStorage.
+Tenant identity propagation, tenant-aware authentication helpers, and opt-in Lucid query scoping for AdonisJS v7.
 
 ## Installation
 
-```sh
-npm install @rikology/adonisjs-tenant
-```
-
-## Quick start
-
-Run the configure command to set up the package:
+This package extends AdonisJS Auth automatically when its provider boots. Configure Auth before configuring tenancy:
 
 ```sh
+npm install @adonisjs/auth @rikology/adonisjs-tenant
+node ace configure @adonisjs/auth --guard=access_tokens
 node ace configure @rikology/adonisjs-tenant
 ```
 
-This registers the provider, middleware alias, and publishes the initial migrations.
+The tenancy configure command requires `config/auth.ts`. It registers the tenancy provider, the `tenant` named middleware, a `config/tenancy.ts` stub, and tenant migrations. It fails before making changes when Auth is not configured.
 
 ## Configuration
 
-Create a `config/tenancy.ts` file:
+Configure a default named resolver in `config/tenancy.ts`:
 
 ```ts
 import { defineTenancyConfig } from '@rikology/adonisjs-tenant'
-import { SubdomainResolver } from '@rikology/adonisjs-tenant/resolvers'
+import Tenant from '#models/tenant'
 
 export default defineTenancyConfig({
-  default: 'subdomain',
+  default: 'header',
+  failOnMissing: true,
   tenants: {
-    subdomain: {
-      resolver: 'subdomain',
+    header: {
+      resolver: 'header',
       options: {
-        lookup: async (subdomain) => {
-          const tenant = await Tenant.findBySlug(subdomain)
-          return tenant ? { id: tenant.id, name: tenant.name, slug: subdomain } : null
+        header: 'X-Tenant-ID',
+        lookup: async (tenantId) => {
+          const tenant = await Tenant.find(tenantId)
+          return tenant ? { id: tenant.id, name: tenant.name, slug: tenant.slug } : null
         },
       },
     },
@@ -42,191 +40,130 @@ export default defineTenancyConfig({
 })
 ```
 
+`failOnMissing` defaults to `true`: the middleware responds with 404 when its selected resolver does not resolve a tenant. Set it to `false` only for routes whose downstream code is prepared to run without a tenant:
+
+```ts
+export default defineTenancyConfig({
+  default: 'header',
+  failOnMissing: false,
+  tenants: {
+    header: { resolver: 'header', options: { tenants: {} } },
+  },
+})
+```
+
+The selected `default` must name an entry in `tenants`; the provider validates this and resolver construction during boot.
+
 ### Tenant resolvers
 
-**SubdomainResolver** — extracts tenant from hostname:
+Import built-in resolvers from `@rikology/adonisjs-tenant/resolvers`.
 
 ```ts
-import { SubdomainResolver } from '@rikology/adonisjs-tenant/resolvers'
-
-const resolver = new SubdomainResolver({
-  levels: 1, // extract first subdomain segment
-  lookup: async (subdomain) => {
-    const tenant = await Tenant.findBySlug(subdomain)
-    return tenant ? { id: tenant.id, name: tenant.name, slug: subdomain } : null
-  },
-})
+import {
+  HeaderResolver,
+  JwtResolver,
+  PathResolver,
+  SubdomainResolver,
+} from '@rikology/adonisjs-tenant/resolvers'
 ```
 
-**HeaderResolver** — identifies a tenant from an HTTP header (default: `X-Tenant-ID`). Configure a trusted lookup or an allowlist; headers are untrusted client input and do not authorize access:
-
-```ts
-import { HeaderResolver } from '@rikology/adonisjs-tenant/resolvers'
-
-const resolver = new HeaderResolver({
-  header: 'X-Tenant-ID',
-  lookup: async (tenantId) => {
-    const tenant = await Tenant.find(tenantId)
-    return tenant ? { id: tenant.id, name: tenant.name, slug: tenant.slug } : null
-  },
-})
-```
-
-**JwtResolver** — extracts tenant from JWT payload:
-
-```ts
-import { JwtResolver } from '@rikology/adonisjs-tenant/resolvers'
-
-const resolver = new JwtResolver({
-  tenantClaim: 'tenant_id', // claim key inside the JWT payload
-  builder: (payload) => {
-    // custom TenantContext builder from decoded JWT
-    return { id: payload.tenant_id, name: payload.tenant_name, slug: payload.tenant_slug }
-  },
-})
-```
-
-**PathResolver** — extracts tenant from first URL path segment:
-
-```ts
-import { PathResolver } from '@rikology/adonisjs-tenant/resolvers'
-
-const resolver = new PathResolver({
-  lookup: async (segment) => {
-    const tenant = await Tenant.findBySlug(segment)
-    return tenant ? { id: tenant.id, name: tenant.name, slug: segment } : null
-  },
-})
-```
+- `SubdomainResolver` extracts a subdomain and resolves it through `lookup` or its configured `tenants` map.
+- `HeaderResolver` reads `X-Tenant-ID` by default. A header is untrusted input: use an allowlist or lookup and authorize the requesting user separately.
+- `JwtResolver` builds a tenant identity from a configured JWT claim/payload builder.
+- `PathResolver` resolves the first URL path segment.
 
 ## Usage
 
-### Middleware setup
+### Middleware and context
 
-The provider automatically registers the `tenant` middleware alias from your `config/tenancy.ts` configuration. Use it on routes that need tenant resolution:
+The configured provider registers the `tenant` named middleware:
 
 ```ts
 // start/routes.ts
 router
-  .get('/dashboard', (ctx) => {
-    console.log(ctx.tenant) // TenantContext { id, name, slug }
+  .get('/dashboard', ({ tenant }) => {
+    return tenant
   })
   .middleware('tenant')
 ```
 
-The middleware calls the configured resolver to extract the tenant from the request (subdomain, header, JWT, or path), sets `ctx.tenant`, and scopes all downstream code via AsyncLocalStorage.
+For a resolved tenant, the middleware assigns `ctx.tenant` and runs downstream code in the package's `AsyncLocalStorage` context. The root package declaration surface augments both `HttpContext` and Adonis Auth's `Authenticator`, so `ctx.tenant` and `auth.tenant` are typed as `TenantContext | undefined`.
 
-If no tenant is resolved, the middleware returns a 404 by default. To allow requests without a tenant:
-
-```ts
-// In config/tenancy.ts, the failOnMissing option is available via TenantMiddleware.configure()
-```
+The provider automatically extends AuthManager during boot; do not call `extendAuthenticator()` in application code just to obtain `auth.tenant`.
 
 ### Tenant-aware authentication guards
 
-Configure tenant-aware auth guards in `config/auth.ts`:
+Configure tenant-aware guard factories from the package's guards subpath:
 
 ```ts
 import { defineTenantAuthConfig, tenantGuards } from '@rikology/adonisjs-tenant/guards'
-import { TenantUserProvider } from '@rikology/adonisjs-tenant/user_providers'
-import { sessionUserProvider } from '@adonisjs/auth/session'
 import { tokensUserProvider } from '@adonisjs/auth/access_tokens'
-import { basicAuthUserProvider } from '@adonisjs/auth/basic_auth'
 import User from '#models/user'
 
-const tenantProvider = new TenantUserProvider(User, 'tenant_user')
-
-const authConfig = defineTenantAuthConfig({
-  default: 'web',
+export default defineTenantAuthConfig({
+  default: 'api',
   guards: {
-    web: tenantGuards.session({
-      provider: sessionUserProvider({
-        model: () => import('#models/user'),
-      }),
-      tenantProvider,
-    }),
     api: tenantGuards.accessTokens({
       provider: tokensUserProvider({
         tokens: 'accessTokens',
         model: () => import('#models/user'),
       }),
-      tenantProvider,
-    }),
-    basic: tenantGuards.basicAuth({
-      provider: basicAuthUserProvider({
-        model: () => import('#models/user'),
-      }),
-      tenantProvider,
+      tenantTokenProvider: User.accessTokens,
     }),
   },
 })
-
-export default authConfig
 ```
 
-### TenantScope mixin on models
+### `TenantScope` model mixin
 
-Apply the mixin to Lucid models that should be scoped to the current tenant:
+Use `TenantScope` only on models whose backing table has a real, non-null `tenant_id` column:
 
 ```ts
+import { column, BaseModel } from '@adonisjs/lucid/orm'
 import { TenantScope } from '@rikology/adonisjs-tenant/mixins'
 
-class Post extends TenantScope(BaseModel) {
+export default class Post extends TenantScope(BaseModel) {
   @column({ isPrimary: true })
   declare id: number
 
   @column()
   declare title: string
 }
-
-// Queries are automatically scoped to the current tenant
-const posts = await Post.all()
-
-`TenantScope` fails closed: a read or mutation without an active tenant context throws
-`TenantNotResolvedError`. Use `withoutTenantScope()` or `forTenant()` only for explicit
-administrative access.
-
-// Bypass tenant scoping
-const allPosts = await Post.withoutTenantScope().exec()
-
-// Scope to a specific tenant
-const tenantPosts = await Post.forTenant('tenant-id').exec()
 ```
 
-The mixin adds a `tenant_id` column, applies a global query scope on `find` events, and auto-sets `tenant_id` on `save`.
+Create that column and tenant-leading indexes in an application migration. Pick the trailing columns from the actual access paths:
 
-### TenantService for CLI and jobs
+```ts
+this.schema.alterTable('posts', (table) => {
+  table.string('tenant_id').notNullable()
+  table.index(['tenant_id', 'created_at'])
+})
+```
 
-Use `TenantService` to access or set the tenant context outside HTTP request lifecycle:
+`TenantScope` adds model behavior; it does **not** create or alter database schema. It fails closed for its scoped reads and mutations when no tenant context is active. `withoutTenantScope()`, `forTenant(tenantId)`, and `model.bypassTenantWriteCheck()` are unrestricted escape hatches; use them only behind host-owned authorization and audit controls.
+
+### CLI and jobs
+
+Set a context explicitly outside the HTTP middleware:
 
 ```ts
 import { TenantService } from '@rikology/adonisjs-tenant'
 
-// Get current tenant
-const tenant = TenantService.get()
-
-// Require a tenant context
-const tenant = TenantService.require()
-
-// Check if tenant context is active
-if (TenantService.isActive()) {
-}
-
-// Run a callback within a tenant-scoped context
 await TenantService.run(tenant, async () => {
-  // any ORM calls here are tenant-scoped
+  // TenantScope queries in this callback use this tenant identity.
 })
 ```
 
-### withTenantAuthFinder on User model
+### `withTenantAuthFinder`
 
-Replace `withAuthFinder` with `withTenantAuthFinder` to scope credential verification to the current tenant:
+Replace `withAuthFinder` on a tenant-owned user model with `withTenantAuthFinder`:
 
 ```ts
+import { column } from '@adonisjs/lucid/orm'
+import { hash } from '@adonisjs/core/services/hash'
 import { withTenantAuthFinder } from '@rikology/adonisjs-tenant/mixins'
-import { hash } from '@adonisjs/core'
 
-class User extends withTenantAuthFinder(hash) {
+export default class User extends withTenantAuthFinder(hash) {
   @column({ isPrimary: true })
   declare id: number
 
@@ -235,199 +172,43 @@ class User extends withTenantAuthFinder(hash) {
 }
 ```
 
-This combines `TenantScope` with `withAuthFinder`, scopes `findForAuth` queries to the active tenant, and binds each newly created access token to that tenant. Tokens are invalid outside their creating tenant.
+It scopes credential lookup to the current tenant and binds newly issued access tokens to that tenant. The generated migration safely adds a nullable, indexed `tenant_id` to an existing `auth_access_tokens` table. Run it, explicitly backfill each token's tenant or revoke/delete tokens that cannot be assigned, then author and run a follow-up migration that makes the column `NOT NULL`. Until that cutover, legacy null tokens are rejected; new tokens are written and verified only in their creating tenant.
 
-The generated migration makes `auth_access_tokens.tenant_id` non-null. Before applying it to a table that already contains tokens, revoke those tokens or use a staged migration to backfill every row with its owning tenant; unbound legacy tokens must not remain valid.
+## Klinika / database RLS
 
-### TenantAuthenticator extension
+`AsyncLocalStorage` selects execution-local tenant identity, and `TenantScope` supplies ORM predicates. Neither is a security boundary or database row-level-security enforcement.
 
-During app boot, extend the AuthManager to make `auth.tenant` available on all authenticator instances:
+For Klinika-style PostgreSQL isolation, define forced RLS policies in your application database and run RLS-protected work through `TenantDatabaseExecutor`:
 
 ```ts
-// providers/app.ts
-import { extendAuthenticator } from '@rikology/adonisjs-tenant/extensions'
+import db from '@adonisjs/lucid/services/db'
+import { TenantDatabaseExecutor } from '@rikology/adonisjs-tenant/database'
 
-await boot(async () => {
-  const authManager = await app.container.make('auth.manager')
-  extendAuthenticator(authManager)
+const tenantDatabase = new TenantDatabaseExecutor(db)
+
+await tenantDatabase.run(async (tenant, trx) => {
+  const posts = await trx.from('posts').where('tenant_id', tenant.id)
+  return posts
 })
 ```
 
-This replaces the default `Authenticator` with `TenantAuthenticator`, which exposes a `tenant` getter.
-
-## Migrations
-
-The configure command publishes two migrations:
-
-- `tenant_user` — a pivot table linking users to tenants
-- `add_tenant_id_to_access_tokens` — adds `tenant_id` to the access tokens table
-
-After configure, run the migrations:
-
-```sh
-node ace migration:run
-```
-
-If you prefer a different table name for the tenant-user pivot, update the `TenantUserProvider` constructor:
-
-```ts
-const tenantProvider = new TenantUserProvider(User, 'custom_pivot_table')
-```
-
-## Architecture
-
-Tenant context flows through the request lifecycle via AsyncLocalStorage:
-
-1. Incoming HTTP request hits `TenantMiddleware`
-2. Middleware calls the configured resolver to extract tenant identity
-3. Resolver returns a `TenantContext` object
-4. Middleware stores it in AsyncLocalStorage via `runWithTenant()`
-5. All downstream code — controllers, guards, ORM — accesses the context via `getTenantContext()` or `TenantService`
-
-```
-Request → TenantMiddleware → resolver.resolve() → TenantContext → AsyncLocalStorage
-                                                                     ↓
-                                              Controller ← auth.tenant
-                                                  ↓
-                                              Guards, ORM queries
-```
+`run()` requires an active tenant context, opens one Lucid transaction, parameterizes its transaction-local `app.tenant_id` setting, and passes that same transaction client to the callback. It does not create policies, bypass forced RLS, authorize platform administrators, or write audit records; those controls remain host-owned.
 
 ## API reference
 
-### Core
+| Import                                     | Public API                                                                                                                                         |
+| ------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `@rikology/adonisjs-tenant`                | `TenantService`, `getTenantContext()`, `getTenantContextOrFail()`, `runWithTenant()`, `defineTenancyConfig()`, `TenantMiddleware`, `TenantContext` |
+| `@rikology/adonisjs-tenant/database`       | `TenantDatabaseExecutor`                                                                                                                           |
+| `@rikology/adonisjs-tenant/guards`         | `defineTenantAuthConfig()`, `tenantGuards`                                                                                                         |
+| `@rikology/adonisjs-tenant/mixins`         | `TenantScope`, `withTenantAuthFinder`                                                                                                              |
+| `@rikology/adonisjs-tenant/resolvers`      | `SubdomainResolver`, `HeaderResolver`, `JwtResolver`, `PathResolver`                                                                               |
+| `@rikology/adonisjs-tenant/user_providers` | `TenantUserProvider`                                                                                                                               |
+| `@rikology/adonisjs-tenant/extensions`     | `TenantAuthenticator`, `extendAuthenticator()` for advanced integrations; the installed provider applies the extension automatically.              |
 
-| Export                      | Description                                          |
-| --------------------------- | ---------------------------------------------------- |
-| `TenantService`             | Static API for accessing tenant context outside HTTP |
-| `getTenantContext()`        | Retrieve current TenantContext or undefined          |
-| `getTenantContextOrFail()`  | Retrieve current TenantContext or throw              |
-| `runWithTenant(tenant, fn)` | Execute a callback within a tenant-scoped context    |
+## Limitations and security model
 
-### Configuration
-
-| Export                     | Description                                   |
-| -------------------------- | --------------------------------------------- |
-| `defineTenancyConfig()`    | Type-safe configuration for tenancy           |
-| `defineTenantAuthConfig()` | Type-safe configuration for tenant-aware auth |
-
-### Middleware
-
-| Export             | Description                                           |
-| ------------------ | ----------------------------------------------------- |
-| `TenantMiddleware` | HTTP middleware that resolves and sets tenant context |
-
-### Guards
-
-| Export                        | Description                              |
-| ----------------------------- | ---------------------------------------- |
-| `tenantGuards.session()`      | Tenant-aware session guard factory       |
-| `tenantGuards.accessTokens()` | Tenant-aware access tokens guard factory |
-| `tenantGuards.basicAuth()`    | Tenant-aware basic auth guard factory    |
-
-### Resolvers
-
-| Export              | Description                                     |
-| ------------------- | ----------------------------------------------- |
-| `SubdomainResolver` | Resolve tenant from subdomain                   |
-| `HeaderResolver`    | Resolve tenant from HTTP header                 |
-| `JwtResolver`       | Resolve tenant from JWT in Authorization header |
-| `PathResolver`      | Resolve tenant from first URL path segment      |
-
-### ORM
-
-| Export                 | Description                                              |
-| ---------------------- | -------------------------------------------------------- |
-| `TenantScope`          | Lucid model mixin for tenant-scoped queries              |
-| `withTenantAuthFinder` | Lucid model mixin combining auth finder + tenant scoping |
-
-### Extensions
-
-| Export                  | Description                                    |
-| ----------------------- | ---------------------------------------------- |
-| `extendAuthenticator()` | Replace Authenticator with TenantAuthenticator |
-| `TenantAuthenticator`   | Extended authenticator with `tenant` getter    |
-
-### User providers
-
-| Export               | Description                                             |
-| -------------------- | ------------------------------------------------------- |
-| `TenantUserProvider` | User provider that scopes lookups to the current tenant |
-
-## Limitations
-
-- **No tenant provisioning** — the library does not create or manage tenants. You must create the tenants table and seed it yourself.
-- **Row-level isolation only** — the library scopes data at the row level via `tenant_id`. It does not provide database-level or schema-level isolation.
-- **Guest tenants out of scope** — the library assumes all requests without a resolved tenant should return 404. There is no built-in support for routes that behave differently for guest vs identified tenants.
-
-## Troubleshooting
-
-### "auth_access_tokens table does not exist" error during migration
-
-If you see this error when running `node ace migration:run`, it means you haven't set up AdonisJS Auth with the access tokens guard yet.
-
-**Solution:**
-
-```sh
-npm install @adonisjs/auth
-node ace configure @adonisjs/auth --guard=access_tokens
-```
-
-After configuring auth, re-run migrations:
-
-```sh
-node ace migration:run
-```
-
-Alternatively, if you don't need access tokens authentication, you can skip the access tokens migration by configuring auth first before installing `@rikology/adonisjs-tenant`.
-
-### User ID is not a string
-
-If your users table uses numeric IDs (which is the default), the migration uses `integer` columns for both `tenant_id` and `user_id` with foreign key constraints. This is the recommended approach for new projects.
-
-If you need to customize the ID types (e.g., UUIDs), modify the published migration after configure:
-
-```sh
-node ace configure @rikology/adonisjs-tenant
-# Edit database/migrations/xxx_create_tenant_user_table.ts
-# Change integer() to uuid() or string() as needed
-```
-
-### No tenant context available error
-
-If you see `TenantNotResolvedError: No tenant context available`, it means you're trying to use tenant-scoped code outside of the middleware chain.
-
-**Common causes:**
-
-1. **Missing middleware** — Ensure routes that need tenant scoping use the middleware:
-
-   ```ts
-   router.get('/posts', [PostsController, 'index']).middleware('tenant')
-   ```
-
-2. **CLI/Queue context** — Use `TenantService.run()` when outside HTTP:
-
-   ```ts
-   await TenantService.run(tenant, async () => {
-     // Your tenant-scoped code here
-   })
-   ```
-
-3. **Missing resolver configuration** — Check `config/tenancy.ts` and ensure your resolver is properly configured.
-
-### configure command skipped access tokens migration
-
-The `node ace configure @rikology/adonisjs-tenant` command now detects your auth setup and skips the access tokens migration if you haven't configured `@adonisjs/auth` yet. This is intentional — it prevents migration failures.
-
-To add the access tokens migration later:
-
-```sh
-node ace make:migration add_tenant_id_to_access_tokens
-```
-
-Then add this to the migration:
-
-```ts
-this.schema.alterTable('auth_access_tokens', (table) => {
-  table.string('tenant_id').nullable().index()
-})
-```
+- The package does not provision tenants or create application tables, columns, indexes, or RLS policies.
+- Middleware placement and resolver lookup establish tenant identity; your application must still authenticate and authorize every request.
+- The package's context and ORM predicates are defense-in-depth conveniences, not a substitute for database RLS where hard isolation is required.
+- Routes that intentionally allow no tenant must opt in with `failOnMissing: false` and must not invoke tenant-scoped operations without establishing a context.

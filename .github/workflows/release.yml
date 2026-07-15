@@ -11,6 +11,7 @@ jobs:
     uses: ./.github/workflows/checks.yml
 
   release:
+    if: github.ref == format('refs/heads/{0}', github.event.repository.default_branch)
     needs: checks
     permissions:
       contents: write

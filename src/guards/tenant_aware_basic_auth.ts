@@ -7,8 +7,7 @@ import type {
 import type { ApplicationService, ConfigProvider } from '@adonisjs/core/types'
 import type { GuardConfigProvider, GuardFactory, GuardContract } from '@adonisjs/auth/types'
 import { HttpContext } from '@adonisjs/core/http'
-import type { TenantUserProvider } from '../user_providers/tenant_user_provider.js'
-import type { TenantContext } from '../types.js'
+import type { TenantContext, TenantUserProviderContract } from '../types.js'
 import { isConfigProvider } from '../utils/is_config_provider.js'
 
 const S = symbols
@@ -20,9 +19,7 @@ export class TenantAwareBasicAuthUserProvider<
 
   constructor(
     private wrappedProvider: BasicAuthUserProviderContract<RealUser>,
-    private tenantUserProvider: {
-      findById(tenant: TenantContext, id: string | number): Promise<RealUser | null>
-    },
+    private tenantUserProvider: TenantUserProviderContract<RealUser>,
     private getCurrentTenant: () => TenantContext | null = () => {
       const ctx = HttpContext.get()
       if (!ctx) return null
@@ -42,11 +39,7 @@ export class TenantAwareBasicAuthUserProvider<
     const tenant = this.getCurrentTenant()
     if (!tenant) return null
 
-    const realUser = guardUser.getOriginal()
-    const userInTenant = await this.tenantUserProvider.findById(
-      tenant,
-      (realUser as any).id as string | number
-    )
+    const userInTenant = await this.tenantUserProvider.findById(tenant, guardUser.getId())
     if (!userInTenant) return null
 
     return guardUser
@@ -57,11 +50,11 @@ export class TenantAwareBasicAuthUserProvider<
   }
 }
 
-export function tenantAwareBasicAuthGuard(config: {
+export function tenantAwareBasicAuthGuard<RealUser>(config: {
   provider:
-    | BasicAuthUserProviderContract<unknown>
-    | ConfigProvider<BasicAuthUserProviderContract<unknown>>
-  tenantProvider: TenantUserProvider<any>
+    | BasicAuthUserProviderContract<RealUser>
+    | ConfigProvider<BasicAuthUserProviderContract<RealUser>>
+  tenantProvider: TenantUserProviderContract<RealUser>
 }): GuardConfigProvider<GuardFactory> {
   return {
     resolver: async (_name: string, app: ApplicationService) => {
@@ -69,9 +62,10 @@ export function tenantAwareBasicAuthGuard(config: {
         ? await config.provider.resolver(app)
         : config.provider
 
-      const wrappedProvider = new TenantAwareBasicAuthUserProvider(rawProvider, {
-        findById: (tenant, id) => config.tenantProvider.findById(tenant, id),
-      })
+      const wrappedProvider = new TenantAwareBasicAuthUserProvider(
+        rawProvider,
+        config.tenantProvider
+      )
 
       const emitter = await app.container.make('emitter')
 

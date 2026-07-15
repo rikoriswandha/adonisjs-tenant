@@ -6,6 +6,7 @@
 | Re-exports all tenant resolver implementations and their option types.
 |
 */
+export type { TenantResolverContract } from '../types.js'
 
 export { SubdomainResolver } from './subdomain_resolver.js'
 export type { SubdomainResolverOptions } from './subdomain_resolver.js'

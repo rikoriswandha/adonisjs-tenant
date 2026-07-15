@@ -8,11 +8,23 @@ import type {
 import type { ApplicationService, ConfigProvider } from '@adonisjs/core/types'
 import type { GuardConfigProvider, GuardFactory, GuardContract } from '@adonisjs/auth/types'
 import { HttpContext } from '@adonisjs/core/http'
+import { RuntimeException } from '@adonisjs/core/exceptions'
 import type { Secret } from '@adonisjs/core/helpers'
 import type { TenantContext } from '../types.js'
 import { isConfigProvider } from '../utils/is_config_provider.js'
 
 const S = symbols
+
+/**
+ * Verifies access tokens against the active tenant.
+ *
+ * {@link TenantDbAccessTokensProvider} implements this contract. A regular
+ * Adonis access-token provider does not, so it cannot accidentally make
+ * membership checks stand in for token-to-tenant binding.
+ */
+export interface TenantBoundAccessTokenVerifier {
+  verifyForCurrentTenant(tokenValue: Secret<string>): Promise<AccessToken | null>
+}
 
 export class TenantAwareAccessTokensUserProvider<
   RealUser,
@@ -21,9 +33,7 @@ export class TenantAwareAccessTokensUserProvider<
 
   constructor(
     private wrappedProvider: AccessTokensUserProviderContract<RealUser>,
-    private tenantProvider: {
-      findById(tenant: TenantContext, id: string | number): Promise<RealUser | null>
-    },
+    private tenantTokenProvider: TenantBoundAccessTokenVerifier,
     private getCurrentTenant: () => TenantContext | null = () => {
       const ctx = HttpContext.get()
       if (!ctx) return null
@@ -52,36 +62,23 @@ export class TenantAwareAccessTokensUserProvider<
   async findById(
     identifier: string | number | BigInt
   ): Promise<AccessTokensGuardUser<RealUser> | null> {
-    const tenant = this.getCurrentTenant()
-    if (!tenant) return null
-
-    const user = await this.tenantProvider.findById(tenant, identifier as string | number)
-    if (!user) return null
-
-    return this.wrappedProvider.createUserForGuard(user)
+    return this.wrappedProvider.findById(identifier)
   }
 
   async verifyToken(tokenValue: Secret<string>): Promise<AccessToken | null> {
-    const token = await this.wrappedProvider.verifyToken(tokenValue)
-    if (!token) return null
+    if (!this.getCurrentTenant()) return null
 
-    const tenant = this.getCurrentTenant()
-    if (!tenant) return null
-
-    const user = await this.tenantProvider.findById(tenant, token.tokenableId as string | number)
-    if (!user) return null
-
-    return token
+    return this.tenantTokenProvider.verifyForCurrentTenant(tokenValue)
   }
 }
 
-export function tenantAwareAccessTokensGuard(config: {
+export function tenantAwareAccessTokensGuard<RealUser>(config: {
   provider:
-    | AccessTokensUserProviderContract<unknown>
-    | ConfigProvider<AccessTokensUserProviderContract<unknown>>
-  tenantProvider: {
-    findById(tenant: TenantContext, id: string | number | BigInt): Promise<unknown | null>
-  }
+    | AccessTokensUserProviderContract<RealUser>
+    | ConfigProvider<AccessTokensUserProviderContract<RealUser>>
+  tenantTokenProvider:
+    | TenantBoundAccessTokenVerifier
+    | ConfigProvider<TenantBoundAccessTokenVerifier>
 }): GuardConfigProvider<GuardFactory> {
   return {
     resolver: async (_name: string, app: ApplicationService) => {
@@ -89,11 +86,17 @@ export function tenantAwareAccessTokensGuard(config: {
         ? await config.provider.resolver(app)
         : config.provider
 
+      const tenantTokenProvider = isConfigProvider(config.tenantTokenProvider)
+        ? await config.tenantTokenProvider.resolver(app)
+        : config.tenantTokenProvider
+      if (typeof tenantTokenProvider?.verifyForCurrentTenant !== 'function') {
+        throw new RuntimeException(
+          'Tenant-aware access-token guards require a tenantTokenProvider with verifyForCurrentTenant'
+        )
+      }
       const wrappedProvider = new TenantAwareAccessTokensUserProvider(
-        rawProvider as AccessTokensUserProviderContract<unknown>,
-        config.tenantProvider as {
-          findById(tenant: TenantContext, id: string | number): Promise<unknown | null>
-        }
+        rawProvider,
+        tenantTokenProvider
       )
 
       const emitter = await app.container.make('emitter')

@@ -58,6 +58,21 @@ test.group('SubdomainResolver', () => {
     assert.isNull(result)
   })
 
+  test('rejects an apex hostname under the documented heuristic', async ({ assert }) => {
+    const resolver = new SubdomainResolver({
+      lookup: () => ({ id: 'incorrect', name: 'Incorrect', slug: 'incorrect' }),
+    })
+
+    const result = await resolver.resolve(mockContext('example.com'))
+
+    assert.isNull(result)
+  })
+
+  test('rejects invalid subdomain levels at construction', ({ assert }) => {
+    assert.throws(() => new SubdomainResolver({ levels: 0 }), 'positive integer')
+    assert.throws(() => new SubdomainResolver({ levels: 1.5 }), 'positive integer')
+  })
+
   test('use lookup callback when provided', async ({ assert }) => {
     const resolver = new SubdomainResolver({
       lookup: (subdomain) => {
@@ -227,6 +242,29 @@ test.group('JwtResolver', () => {
     assert.isNotNull(result)
     assert.equal(result!.id, 'tnt-3')
     assert.equal(result!.slug, 'tnt-3')
+  })
+
+  test('preserves numeric zero as a tenant identifier', async ({ assert }) => {
+    const token = makeToken({ tenant_id: 0 })
+    const result = await new JwtResolver().resolve(mockContext(`Bearer ${token}`))
+
+    assert.deepEqual(result, { id: 0, name: '0', slug: '0' })
+  })
+
+  test('rejects empty tenant identifiers', async ({ assert }) => {
+    const token = makeToken({ tenant_id: '' })
+    const result = await new JwtResolver().resolve(mockContext(`Bearer ${token}`))
+
+    assert.isNull(result)
+  })
+
+  test('rejects tenant identifiers outside the string-or-number contract', async ({ assert }) => {
+    for (const tenantId of [false, true, {}, []]) {
+      const token = makeToken({ tenant_id: tenantId })
+      const result = await new JwtResolver().resolve(mockContext(`Bearer ${token}`))
+
+      assert.isNull(result)
+    }
   })
 
   test('return null when Authorization header is missing', async ({ assert }) => {

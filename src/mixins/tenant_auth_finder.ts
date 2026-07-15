@@ -81,11 +81,24 @@ export class TenantDbAccessTokensProvider<
     })
   }
 
-  async verify(tokenValue: Parameters<DbAccessTokensProvider<TokenableModel>['verify']>[0]) {
-    const token = await super.verify(tokenValue)
-    const tenant = getTenantContext()
+  /**
+   * Verifies a token is valid for the tenant active in the current async
+   * context. Pass this method to {@link tenantAwareAccessTokensGuard}.
+   */
+  async verifyForCurrentTenant(
+    tokenValue: Parameters<DbAccessTokensProvider<TokenableModel>['verify']>[0]
+  ): Promise<AccessToken | null> {
+    return this.verify(tokenValue)
+  }
 
-    if (!token || !tenant) {
+  async verify(tokenValue: Parameters<DbAccessTokensProvider<TokenableModel>['verify']>[0]) {
+    const tenant = getTenantContext()
+    if (!tenant) {
+      return null
+    }
+
+    const token = await super.verify(tokenValue)
+    if (!token) {
       return null
     }
 

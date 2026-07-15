@@ -42,15 +42,9 @@ async function validatePrerequisites(command: Configure) {
   const { hasAuthConfig, hasAccessTokens } = detectAuthConfig(appRoot)
 
   if (!hasAuthConfig) {
-    command.logger.warning(
-      'No auth config detected. Please install @adonisjs/auth and configure it first:'
+    throw new Error(
+      'Cannot configure @rikology/adonisjs-tenant without @adonisjs/auth. Install and configure @adonisjs/auth first (node ace configure @adonisjs/auth).'
     )
-    command.logger.info('  npm install @adonisjs/auth')
-    command.logger.info('  node ace configure @adonisjs/auth')
-    command.logger.warning(
-      'Skipping access tokens migration. You can add it later by creating a migration to add tenant_id to your auth_access_tokens table.'
-    )
-    return { skipAccessTokensMigration: true }
   }
 
   if (!hasAccessTokens) {
@@ -59,7 +53,7 @@ async function validatePrerequisites(command: Configure) {
     )
     command.logger.info('  node ace configure @adonisjs/auth --guard=access_tokens')
     command.logger.info(
-      'You can skip the access tokens migration for now and add tenant_id later when needed.'
+      'Skipping the access tokens migration. You can add tenant_id later when needed.'
     )
   }
 
@@ -67,9 +61,8 @@ async function validatePrerequisites(command: Configure) {
 }
 
 export async function configure(command: Configure) {
-  const codemods = await command.createCodemods()
   const { skipAccessTokensMigration } = await validatePrerequisites(command)
-
+  const codemods = await command.createCodemods()
   await codemods.updateRcFile((rcFile) => {
     rcFile.addProvider('@rikology/adonisjs-tenant/providers/tenancy_provider')
   })

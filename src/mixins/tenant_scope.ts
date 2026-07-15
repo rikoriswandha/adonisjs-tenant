@@ -23,7 +23,7 @@ type UpdateCallable = Callable & {
 }
 
 const scopedBuilders = new WeakSet<object>()
-const writeCheckBypass = new WeakSet<object>()
+const tenantWriteCheckBypass = new WeakSet<object>()
 const bootedTenantModels = new WeakSet<object>()
 
 function tenantIdsMatch(left: string | number, right: string | number) {
@@ -157,7 +157,7 @@ export function TenantScope<Model extends NormalizeConstructor<typeof BaseModel>
           return
         }
 
-        if (writeCheckBypass.has(model)) {
+        if (tenantWriteCheckBypass.has(model)) {
           return
         }
 
@@ -199,6 +199,12 @@ export function TenantScope<Model extends NormalizeConstructor<typeof BaseModel>
       return applyMutationScope(query)
     }
 
+    /**
+     * Return a query with this mixin's tenant predicate disabled.
+     *
+     * This is not an authorization boundary. Callers must apply host-owned
+     * authorization and auditing before issuing an unscoped query.
+     */
     static withoutTenantScope(): ModelQueryBuilderContract<LucidModel, InstanceType<Model>> {
       const query = originalQuery.call(this) as ModelQueryBuilderContract<
         LucidModel,
@@ -210,6 +216,11 @@ export function TenantScope<Model extends NormalizeConstructor<typeof BaseModel>
       ) as ModelQueryBuilderContract<LucidModel, InstanceType<Model>>
     }
 
+    /**
+     * Return a query constrained to the given tenant rather than the active context.
+     *
+     * This selects a tenant; it does not authorize access to that tenant.
+     */
     static forTenant(
       tenantId: string | number
     ): ModelQueryBuilderContract<LucidModel, InstanceType<Model>> {
@@ -222,8 +233,13 @@ export function TenantScope<Model extends NormalizeConstructor<typeof BaseModel>
         .where('tenant_id', tenantId) as ModelQueryBuilderContract<LucidModel, InstanceType<Model>>
     }
 
+    /**
+     * Disable this mixin's cross-tenant instance write check for this model instance.
+     *
+     * This does not authorize the write. Callers must enforce host policy first.
+     */
     bypassTenantWriteCheck(): this {
-      writeCheckBypass.add(this)
+      tenantWriteCheckBypass.add(this)
       return this
     }
   }
