@@ -87,7 +87,7 @@ router
   .middleware('tenant')
 ```
 
-For a resolved tenant, the middleware assigns `ctx.tenant` and runs downstream code in the package's `AsyncLocalStorage` context. The root package declaration surface augments both `HttpContext` and Adonis Auth's `Authenticator`, so `ctx.tenant` and `auth.tenant` are typed as `TenantContext | undefined`.
+For a resolved tenant, the middleware assigns `ctx.tenant` and runs downstream code in the package's `AsyncLocalStorage` context. Tenant-aware guards and `auth.tenant` read that package context directly, so they do not require Adonis `app.useAsyncLocalStorage` to be enabled. The root package declaration surface augments both `HttpContext` and Adonis Auth's `Authenticator`, so `ctx.tenant` and `auth.tenant` are typed as `TenantContext | undefined`.
 
 The provider automatically extends AuthManager during boot; do not call `extendAuthenticator()` in application code just to obtain `auth.tenant`.
 
@@ -156,14 +156,14 @@ await TenantService.run(tenant, async () => {
 
 ### `withTenantAuthFinder`
 
-Replace `withAuthFinder` on a tenant-owned user model with `withTenantAuthFinder`:
+For users stored per tenant, replace `withAuthFinder` with `withTenantAuthFinder` and apply it to `BaseModel`:
 
 ```ts
-import { column } from '@adonisjs/lucid/orm'
-import { hash } from '@adonisjs/core/services/hash'
+import hash from '@adonisjs/core/services/hash'
+import { BaseModel, column } from '@adonisjs/lucid/orm'
 import { withTenantAuthFinder } from '@rikology/adonisjs-tenant/mixins'
 
-export default class User extends withTenantAuthFinder(hash) {
+export default class User extends withTenantAuthFinder(() => hash.use())(BaseModel) {
   @column({ isPrimary: true })
   declare id: number
 
@@ -172,7 +172,24 @@ export default class User extends withTenantAuthFinder(hash) {
 }
 ```
 
-It scopes credential lookup to the current tenant and binds newly issued access tokens to that tenant. The generated migration safely adds a nullable, indexed `tenant_id` to an existing `auth_access_tokens` table. Run it, explicitly backfill each token's tenant or revoke/delete tokens that cannot be assigned, then author and run a follow-up migration that makes the column `NOT NULL`. Until that cutover, legacy null tokens are rejected; new tokens are written and verified only in their creating tenant.
+This direct mode composes `TenantScope` and filters the user table's `tenant_id`.
+
+For global users whose tenant membership lives in a pivot table, configure membership mode instead:
+
+```ts
+export default class User extends withTenantAuthFinder(() => hash.use(), {
+  uids: ['email'],
+  passwordColumnName: 'password',
+  membership: {
+    pivotTable: 'tenant_user',
+    // Optional; these are the defaults:
+    userForeignKey: 'user_id',
+    tenantForeignKey: 'tenant_id',
+  },
+})(BaseModel) {}
+```
+
+Membership mode leaves the global user model unscoped, joins the pivot only for credential lookup, and hydrates the model exclusively from user-table columns. Both modes bind newly issued access tokens to the active tenant. The generated migration safely adds a nullable, indexed `tenant_id` to an existing `auth_access_tokens` table. Run it, explicitly backfill each token's tenant or revoke/delete tokens that cannot be assigned, then author and run a follow-up migration that makes the column `NOT NULL`. Until that cutover, legacy null tokens are rejected; new tokens are written and verified only in their creating tenant.
 
 ## Klinika / database RLS
 

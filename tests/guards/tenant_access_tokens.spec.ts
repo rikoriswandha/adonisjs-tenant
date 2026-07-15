@@ -9,6 +9,7 @@ import {
   type TenantBoundAccessTokenVerifier,
 } from '../../src/guards/tenant_aware_access_tokens.js'
 import type { TenantContext } from '../../src/types.js'
+import { getTenantContext, runWithTenant } from '../../src/tenant_context.js'
 
 const S = symbols
 
@@ -66,6 +67,26 @@ test.group('TenantAwareAccessTokensUserProvider', () => {
 
     activeTenant = tenantB
     assert.isNull(await wrapper.verifyToken(new Secret('oat_tenant_a')))
+  })
+
+  test('uses the package tenant context by default for tenant-bound token verification', async ({
+    assert,
+  }) => {
+    let receivedTenant: TenantContext | undefined
+    const tenantTokenProvider: TenantBoundAccessTokenVerifier = {
+      verifyForCurrentTenant: async () => {
+        receivedTenant = getTenantContext()
+        return receivedTenant?.id === tenantA.id ? createToken() : null
+      },
+    }
+    const wrapper = new TenantAwareAccessTokensUserProvider(createProvider(), tenantTokenProvider)
+
+    const result = await runWithTenant(tenantA, () =>
+      wrapper.verifyToken(new Secret('oat_tenant_a'))
+    )
+
+    assert.isNotNull(result)
+    assert.equal(receivedTenant, tenantA)
   })
 
   test('requires an active tenant before calling the tenant-bound verifier', async ({ assert }) => {

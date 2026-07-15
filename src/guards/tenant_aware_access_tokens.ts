@@ -7,9 +7,10 @@ import type {
 } from '@adonisjs/auth/types/access_tokens'
 import type { ApplicationService, ConfigProvider } from '@adonisjs/core/types'
 import type { GuardConfigProvider, GuardFactory, GuardContract } from '@adonisjs/auth/types'
-import { HttpContext } from '@adonisjs/core/http'
+import type { HttpContext } from '@adonisjs/core/http'
 import { RuntimeException } from '@adonisjs/core/exceptions'
 import type { Secret } from '@adonisjs/core/helpers'
+import { getTenantContext } from '../tenant_context.js'
 import type { TenantContext } from '../types.js'
 import { isConfigProvider } from '../utils/is_config_provider.js'
 
@@ -34,11 +35,7 @@ export class TenantAwareAccessTokensUserProvider<
   constructor(
     private wrappedProvider: AccessTokensUserProviderContract<RealUser>,
     private tenantTokenProvider: TenantBoundAccessTokenVerifier,
-    private getCurrentTenant: () => TenantContext | null = () => {
-      const ctx = HttpContext.get()
-      if (!ctx) return null
-      return ctx.tenant ?? null
-    }
+    private getCurrentTenant: () => TenantContext | null = () => getTenantContext() ?? null
   ) {
     this[S.PROVIDER_REAL_USER] = wrappedProvider[S.PROVIDER_REAL_USER]
   }

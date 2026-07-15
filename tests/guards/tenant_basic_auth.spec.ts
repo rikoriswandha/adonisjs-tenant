@@ -7,6 +7,7 @@ import {
   TenantAwareBasicAuthUserProvider,
 } from '../../src/guards/tenant_aware_basic_auth.js'
 import type { TenantContext } from '../../src/types.js'
+import { runWithTenant } from '../../src/tenant_context.js'
 
 const S = symbols
 
@@ -68,6 +69,26 @@ test.group('TenantAwareBasicAuthUserProvider', () => {
     assert.isNotNull(result)
     assert.equal(result!.getId(), 'custom-primary-key')
     assert.deepEqual(result!.getOriginal(), { email: 'user@example.com' })
+  })
+
+  test('uses the package tenant context by default', async ({ assert }) => {
+    const provider = createMockProvider(true)
+    const tenantProvider = createTenantProvider(true)
+    const findById = tenantProvider.findById
+    let receivedTenant: TenantContext | undefined
+
+    tenantProvider.findById = async (currentTenant, id) => {
+      receivedTenant = currentTenant
+      return findById(currentTenant, id)
+    }
+
+    const wrapper = new TenantAwareBasicAuthUserProvider(provider, tenantProvider)
+    const result = await runWithTenant(tenant, () =>
+      wrapper.verifyCredentials('user@example.com', 'password')
+    )
+
+    assert.isNotNull(result)
+    assert.equal(receivedTenant, tenant)
   })
 
   test('verifyCredentials returns null when credentials are invalid', async ({ assert }) => {

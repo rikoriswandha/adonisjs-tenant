@@ -7,6 +7,7 @@ import {
   TenantAwareSessionUserProvider,
 } from '../../src/guards/tenant_aware_session.js'
 import type { TenantContext } from '../../src/types.js'
+import { runWithTenant } from '../../src/tenant_context.js'
 
 const S = symbols
 
@@ -66,6 +67,22 @@ test.group('TenantAwareSessionUserProvider', () => {
     assert.isNotNull(result)
     assert.equal(result!.getId(), 'custom-primary-key')
     assert.deepEqual(result!.getOriginal(), { email: 'user@example.com' })
+  })
+
+  test('uses package tenant context by default', async ({ assert }) => {
+    const provider = createMockProvider(true)
+    const tenantProvider = createTenantProvider(true)
+    let receivedTenant: TenantContext | null = null
+    tenantProvider.findById = async (currentTenant, id) => {
+      receivedTenant = currentTenant
+      return id === 'custom-primary-key' ? { email: 'user@example.com' } : null
+    }
+
+    const wrapper = new TenantAwareSessionUserProvider(provider, tenantProvider)
+    const result = await runWithTenant(tenant, () => wrapper.findById('custom-primary-key'))
+
+    assert.isNotNull(result)
+    assert.deepEqual(receivedTenant, tenant)
   })
 
   test('findById returns null when user not found by wrapped provider', async ({ assert }) => {

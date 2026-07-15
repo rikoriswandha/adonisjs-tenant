@@ -113,32 +113,72 @@ export class TenantDbAccessTokensProvider<
   }
 }
 
+export type TenantAuthFinderMembershipOptions = {
+  pivotTable: string
+  userForeignKey?: string
+  tenantForeignKey?: string
+}
+
+export type TenantAuthFinderOptions = {
+  uids?: string[]
+  passwordColumnName?: string
+  membership?: TenantAuthFinderMembershipOptions
+}
+
+type TenantAuthFinderDirectOptions = Omit<TenantAuthFinderOptions, 'membership'> & {
+  membership?: undefined
+}
+
+type TenantAuthFinderMethods<Model extends NormalizeConstructor<typeof BaseModel>> = {
+  findForAuth(uids: string[], value: string): Promise<InstanceType<Model> | null>
+  verifyCredentials(uid: string, password: string): Promise<InstanceType<Model>>
+  readonly accessTokens: TenantDbAccessTokensProvider<LucidModel>
+}
+
 export type TenantAuthFinderModelContract<Model extends NormalizeConstructor<typeof BaseModel>> =
-  TenantScopedModelContract<Model> & {
-    findForAuth(uids: string[], value: string): Promise<InstanceType<Model> | null>
-    verifyCredentials(uids: string[], value: string, password: string): Promise<InstanceType<Model>>
-    readonly accessTokens: TenantDbAccessTokensProvider<LucidModel>
-  }
+  TenantScopedModelContract<Model> & TenantAuthFinderMethods<Model>
+
+export type TenantMembershipAuthFinderModelContract<
+  Model extends NormalizeConstructor<typeof BaseModel>,
+> = Model & TenantAuthFinderMethods<Model>
 
 /**
- * Composable mixin that adds tenant-aware authentication finder
- * to a Lucid model.
+ * Composable mixin that adds tenant-aware authentication lookup and access
+ * tokens to a Lucid model.
  *
- * Combines {@link withAuthFinder} with {@link TenantScope}, scopes
- * credential verification to the current tenant, and injects
- * tenant_id into access token generation.
+ * By default, users are scoped through their `tenant_id` column. Pass
+ * `membership` to scope global users through a tenant-membership pivot instead.
  */
 export function withTenantAuthFinder(
   hash: (() => Hash) | HashManager<Record<string, never>>,
-  options?: {
-    uids?: string[]
-    passwordColumnName?: string
+  options: TenantAuthFinderOptions & {
+    membership: TenantAuthFinderMembershipOptions
   }
 ): <Model extends NormalizeConstructor<typeof BaseModel>>(
   superclass: Model
-) => TenantAuthFinderModelContract<Model> {
+) => TenantMembershipAuthFinderModelContract<Model>
+export function withTenantAuthFinder(
+  hash: (() => Hash) | HashManager<Record<string, never>>,
+  options?: TenantAuthFinderDirectOptions
+): <Model extends NormalizeConstructor<typeof BaseModel>>(
+  superclass: Model
+) => TenantAuthFinderModelContract<Model>
+export function withTenantAuthFinder(
+  hash: (() => Hash) | HashManager<Record<string, never>>,
+  options: TenantAuthFinderOptions
+): <Model extends NormalizeConstructor<typeof BaseModel>>(
+  superclass: Model
+) => TenantMembershipAuthFinderModelContract<Model>
+export function withTenantAuthFinder(
+  hash: (() => Hash) | HashManager<Record<string, never>>,
+  options?: TenantAuthFinderOptions
+) {
+  const { membership, ...authFinderOptions } = options ?? {}
+
   return function <Model extends NormalizeConstructor<typeof BaseModel>>(superclass: Model) {
-    class TenantAuthFinder extends withAuthFinder(hash, options)(TenantScope(superclass) as Model) {
+    const model = membership ? superclass : (TenantScope(superclass) as Model)
+
+    class TenantAuthFinder extends withAuthFinder(hash, authFinderOptions)(model) {
       /**
        * Overrides findForAuth to scope user lookup to the current
        * tenant when a tenant context is active.
@@ -149,13 +189,37 @@ export function withTenantAuthFinder(
         value: string
       ): Promise<InstanceType<T> | null> {
         const query = this.query()
-        const ctx = getTenantContext()
-        if (ctx) {
-          query.where('tenant_id', String(ctx.id))
+
+        if (membership) {
+          const tenant = getTenantContextOrFail()
+          const userTable = this.table
+          const primaryKeyColumn = this.$getColumn(this.primaryKey)?.columnName ?? this.primaryKey
+          const userForeignKey = membership.userForeignKey ?? 'user_id'
+          const tenantForeignKey = membership.tenantForeignKey ?? 'tenant_id'
+
+          query
+            .select(`${userTable}.*`)
+            .innerJoin(
+              membership.pivotTable,
+              `${userTable}.${primaryKeyColumn}`,
+              `${membership.pivotTable}.${userForeignKey}`
+            )
+            .where(`${membership.pivotTable}.${tenantForeignKey}`, tenant.id)
+        } else {
+          const tenant = getTenantContext()
+          if (tenant) {
+            query.where('tenant_id', String(tenant.id))
+          }
         }
+
         query.andWhere((builder) => {
-          uids.forEach((uid) => builder.orWhere(uid, value))
+          uids.forEach((uid) => {
+            const columnName = this.$getColumn(uid)?.columnName ?? uid
+            const column = membership ? `${this.table}.${columnName}` : columnName
+            builder.orWhere(column, value)
+          })
         })
+
         return query.limit(1).first()
       }
 

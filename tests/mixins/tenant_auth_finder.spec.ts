@@ -133,6 +133,95 @@ test.group('withTenantAuthFinder', () => {
     }
   })
 
+  test('findForAuth authenticates global users through memberships without hydrating pivot columns', async ({
+    assert,
+  }) => {
+    class User extends withTenantAuthFinder(unusedHash, {
+      membership: { pivotTable: 'tenant_user' },
+    })(BaseModel) {
+      static table = 'users'
+      static primaryKey = 'uuid'
+
+      @column({ isPrimary: true, columnName: 'id' })
+      declare uuid: number
+
+      @column()
+      declare email: string
+
+      @column()
+      declare password: string
+    }
+
+    const database = new Database(
+      {
+        connection: 'sqlite',
+        connections: {
+          sqlite: {
+            client: 'sqlite3',
+            connection: { filename: ':memory:' },
+            useNullAsDefault: true,
+          },
+        },
+      },
+      {
+        trace() {},
+        debug() {},
+        info() {},
+        warn() {},
+        error() {},
+        fatal() {},
+      } as never,
+      {
+        hasListeners() {
+          return false
+        },
+        emit() {},
+      } as never
+    )
+
+    try {
+      const connection = database.connection()
+      await connection.schema.createTable('users', (table) => {
+        table.increments('id')
+        table.string('email').notNullable()
+        table.string('password').notNullable()
+      })
+      await connection.schema.createTable('tenant_user', (table) => {
+        table.increments('id')
+        table.integer('user_id').notNullable()
+        table.string('tenant_id').notNullable()
+        table.string('email').notNullable()
+      })
+      await connection.table('users').insert({
+        id: 1,
+        email: 'member@example.com',
+        password: 'user-password',
+      })
+      await connection.table('tenant_user').insert({
+        id: 999,
+        user_id: 1,
+        tenant_id: 'tenant-a',
+        email: 'pivot@example.com',
+      })
+      User.useAdapter(database.modelAdapter())
+
+      const userInTenantA = (await runWithTenant(
+        { id: 'tenant-a', name: 'Tenant A', slug: 'tenant-a' },
+        () => User.findForAuth(['email'], 'member@example.com')
+      )) as InstanceType<typeof User> | null
+      const userInTenantB = (await runWithTenant(
+        { id: 'tenant-b', name: 'Tenant B', slug: 'tenant-b' },
+        () => User.findForAuth(['email'], 'member@example.com')
+      )) as InstanceType<typeof User> | null
+
+      assert.equal(userInTenantA?.uuid, 1)
+      assert.equal(userInTenantA?.email, 'member@example.com')
+      assert.isNull(userInTenantB)
+    } finally {
+      await database.manager.closeAll()
+    }
+  })
+
   test('findForAuth works without tenant context', async ({ assert }) => {
     const hash = unusedHash
 

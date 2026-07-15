@@ -19,6 +19,7 @@ export class TenantUserProvider<UserModel extends LucidModel> implements TenantU
     const databaseIdentifier = String(identifier)
     const user = await this.userModel
       .query()
+      .select(`${this.userModel.table}.*`)
       .innerJoin(
         this.tenantUserPivot,
         `${this.userModel.table}.${primaryKeyColumn}`,
