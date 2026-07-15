@@ -1,5 +1,5 @@
 {
-  "name": "adonisjs-tenant",
+  "name": "@rikology/adonisjs-tenant",
   "description": "Multitenancy library for AdonisJS v7 — tenant-aware auth + ORM scoping",
   "version": "0.1.0",
   "engines": {
@@ -48,7 +48,18 @@
     "saas"
   ],
   "author": "Riko Riswandha Fahmi Prasetyo <rikorisw@gmail.com>",
+  "publishConfig": {
+    "access": "public"
+  },
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/rikoriswandha/adonisjs-tenant.git"
+  },
+  "bugs": {
+    "url": "https://github.com/rikoriswandha/adonisjs-tenant/issues"
+  },
+  "homepage": "https://github.com/rikoriswandha/adonisjs-tenant#readme",
   "devDependencies": {
     "@adonisjs/assembler": "^8.0.0",
     "@adonisjs/auth": "^10.0.0",

@@ -71,13 +71,13 @@ export async function configure(command: Configure) {
   const { skipAccessTokensMigration } = await validatePrerequisites(command)
 
   await codemods.updateRcFile((rcFile) => {
-    rcFile.addProvider('adonisjs-tenant/providers/tenancy_provider')
+    rcFile.addProvider('@rikology/adonisjs-tenant/providers/tenancy_provider')
   })
 
   await codemods.registerMiddleware('named', [
     {
       name: 'tenant',
-      path: 'adonisjs-tenant/middleware',
+      path: '@rikology/adonisjs-tenant/middleware',
     },
   ])
 
@@ -105,7 +105,7 @@ export async function configure(command: Configure) {
     )
   }
 
-  command.logger.success('adonisjs-tenant configured successfully!')
+  command.logger.success('@rikology/adonisjs-tenant configured successfully!')
   command.logger.info('')
   command.logger.info('Next steps:')
   command.logger.info('  1. Update config/tenancy.ts with your tenant resolver configuration')

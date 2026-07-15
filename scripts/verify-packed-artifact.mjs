@@ -5,7 +5,7 @@ import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 const projectRoot = dirname(fileURLToPath(new URL('../package.json', import.meta.url)))
-const tempRoot = await mkdtemp(join(tmpdir(), 'adonisjs-tenant-consumer-'))
+const tempRoot = await mkdtemp(join(tmpdir(), 'rikology-adonisjs-tenant-consumer-'))
 let tarball
 
 function run(command, args, cwd) {
@@ -27,7 +27,7 @@ try {
         private: true,
         type: 'module',
         dependencies: {
-          'adonisjs-tenant': `file:${tarball}`,
+          '@rikology/adonisjs-tenant': `file:${tarball}`,
         },
         devDependencies: {
           '@adonisjs/assembler': '^8.0.0',
@@ -68,9 +68,9 @@ try {
   )
   await writeFile(
     join(tempRoot, 'index.ts'),
-    `import TenantMiddleware from 'adonisjs-tenant/middleware'
-import TenancyProvider from 'adonisjs-tenant/providers/tenancy_provider'
-import { TenantScope, withTenantAuthFinder } from 'adonisjs-tenant/mixins'
+    `import TenantMiddleware from '@rikology/adonisjs-tenant/middleware'
+import TenancyProvider from '@rikology/adonisjs-tenant/providers/tenancy_provider'
+import { TenantScope, withTenantAuthFinder } from '@rikology/adonisjs-tenant/mixins'
 
 void TenantMiddleware
 void TenancyProvider
@@ -80,10 +80,10 @@ void withTenantAuthFinder
   )
   await writeFile(
     join(tempRoot, 'verify.mjs'),
-    `import TenantMiddleware from 'adonisjs-tenant/middleware'
-import TenancyProvider from 'adonisjs-tenant/providers/tenancy_provider'
-import { HeaderResolver } from 'adonisjs-tenant/resolvers'
-import { TenantScope, withTenantAuthFinder } from 'adonisjs-tenant/mixins'
+    `import TenantMiddleware from '@rikology/adonisjs-tenant/middleware'
+import TenancyProvider from '@rikology/adonisjs-tenant/providers/tenancy_provider'
+import { HeaderResolver } from '@rikology/adonisjs-tenant/resolvers'
+import { TenantScope, withTenantAuthFinder } from '@rikology/adonisjs-tenant/mixins'
 import { BaseModel } from '@adonisjs/lucid/orm'
 import { Database } from '@adonisjs/lucid/database'
 
@@ -208,7 +208,7 @@ try {
     tempRoot
   )
   run('npm', ['install', tarball], appRoot)
-  run(process.execPath, ['ace', 'configure', 'adonisjs-tenant'], appRoot)
+  run(process.execPath, ['ace', 'configure', '@rikology/adonisjs-tenant'], appRoot)
   await access(join(appRoot, 'config', 'tenancy.ts'))
   run(process.execPath, ['ace', 'list'], appRoot)
 } finally {

@@ -1,11 +1,11 @@
-# adonisjs-tenant
+# @rikology/adonisjs-tenant
 
 Multitenancy library for AdonisJS v7. Provides tenant-aware authentication guards and ORM scoping via AsyncLocalStorage.
 
 ## Installation
 
 ```sh
-npm install adonisjs-tenant
+npm install @rikology/adonisjs-tenant
 ```
 
 ## Quick start
@@ -13,7 +13,7 @@ npm install adonisjs-tenant
 Run the configure command to set up the package:
 
 ```sh
-node ace configure adonisjs-tenant
+node ace configure @rikology/adonisjs-tenant
 ```
 
 This registers the provider, middleware alias, and publishes the initial migrations.
@@ -23,8 +23,8 @@ This registers the provider, middleware alias, and publishes the initial migrati
 Create a `config/tenancy.ts` file:
 
 ```ts
-import { defineTenancyConfig } from 'adonisjs-tenant'
-import { SubdomainResolver } from 'adonisjs-tenant/resolvers'
+import { defineTenancyConfig } from '@rikology/adonisjs-tenant'
+import { SubdomainResolver } from '@rikology/adonisjs-tenant/resolvers'
 
 export default defineTenancyConfig({
   default: 'subdomain',
@@ -47,7 +47,7 @@ export default defineTenancyConfig({
 **SubdomainResolver** — extracts tenant from hostname:
 
 ```ts
-import { SubdomainResolver } from 'adonisjs-tenant/resolvers'
+import { SubdomainResolver } from '@rikology/adonisjs-tenant/resolvers'
 
 const resolver = new SubdomainResolver({
   levels: 1, // extract first subdomain segment
@@ -61,7 +61,7 @@ const resolver = new SubdomainResolver({
 **HeaderResolver** — identifies a tenant from an HTTP header (default: `X-Tenant-ID`). Configure a trusted lookup or an allowlist; headers are untrusted client input and do not authorize access:
 
 ```ts
-import { HeaderResolver } from 'adonisjs-tenant/resolvers'
+import { HeaderResolver } from '@rikology/adonisjs-tenant/resolvers'
 
 const resolver = new HeaderResolver({
   header: 'X-Tenant-ID',
@@ -75,7 +75,7 @@ const resolver = new HeaderResolver({
 **JwtResolver** — extracts tenant from JWT payload:
 
 ```ts
-import { JwtResolver } from 'adonisjs-tenant/resolvers'
+import { JwtResolver } from '@rikology/adonisjs-tenant/resolvers'
 
 const resolver = new JwtResolver({
   tenantClaim: 'tenant_id', // claim key inside the JWT payload
@@ -89,7 +89,7 @@ const resolver = new JwtResolver({
 **PathResolver** — extracts tenant from first URL path segment:
 
 ```ts
-import { PathResolver } from 'adonisjs-tenant/resolvers'
+import { PathResolver } from '@rikology/adonisjs-tenant/resolvers'
 
 const resolver = new PathResolver({
   lookup: async (segment) => {
@@ -127,8 +127,8 @@ If no tenant is resolved, the middleware returns a 404 by default. To allow requ
 Configure tenant-aware auth guards in `config/auth.ts`:
 
 ```ts
-import { defineTenantAuthConfig, tenantGuards } from 'adonisjs-tenant/guards'
-import { TenantUserProvider } from 'adonisjs-tenant/user_providers'
+import { defineTenantAuthConfig, tenantGuards } from '@rikology/adonisjs-tenant/guards'
+import { TenantUserProvider } from '@rikology/adonisjs-tenant/user_providers'
 import { sessionUserProvider } from '@adonisjs/auth/session'
 import { tokensUserProvider } from '@adonisjs/auth/access_tokens'
 import { basicAuthUserProvider } from '@adonisjs/auth/basic_auth'
@@ -169,7 +169,7 @@ export default authConfig
 Apply the mixin to Lucid models that should be scoped to the current tenant:
 
 ```ts
-import { TenantScope } from 'adonisjs-tenant/mixins'
+import { TenantScope } from '@rikology/adonisjs-tenant/mixins'
 
 class Post extends TenantScope(BaseModel) {
   @column({ isPrimary: true })
@@ -200,7 +200,7 @@ The mixin adds a `tenant_id` column, applies a global query scope on `find` even
 Use `TenantService` to access or set the tenant context outside HTTP request lifecycle:
 
 ```ts
-import { TenantService } from 'adonisjs-tenant'
+import { TenantService } from '@rikology/adonisjs-tenant'
 
 // Get current tenant
 const tenant = TenantService.get()
@@ -223,7 +223,7 @@ await TenantService.run(tenant, async () => {
 Replace `withAuthFinder` with `withTenantAuthFinder` to scope credential verification to the current tenant:
 
 ```ts
-import { withTenantAuthFinder } from 'adonisjs-tenant/mixins'
+import { withTenantAuthFinder } from '@rikology/adonisjs-tenant/mixins'
 import { hash } from '@adonisjs/core'
 
 class User extends withTenantAuthFinder(hash) {
@@ -245,7 +245,7 @@ During app boot, extend the AuthManager to make `auth.tenant` available on all a
 
 ```ts
 // providers/app.ts
-import { extendAuthenticator } from 'adonisjs-tenant/extensions'
+import { extendAuthenticator } from '@rikology/adonisjs-tenant/extensions'
 
 await boot(async () => {
   const authManager = await app.container.make('auth.manager')
@@ -378,7 +378,7 @@ After configuring auth, re-run migrations:
 node ace migration:run
 ```
 
-Alternatively, if you don't need access tokens authentication, you can skip the access tokens migration by configuring auth first before installing `adonisjs-tenant`.
+Alternatively, if you don't need access tokens authentication, you can skip the access tokens migration by configuring auth first before installing `@rikology/adonisjs-tenant`.
 
 ### User ID is not a string
 
@@ -387,7 +387,7 @@ If your users table uses numeric IDs (which is the default), the migration uses 
 If you need to customize the ID types (e.g., UUIDs), modify the published migration after configure:
 
 ```sh
-node ace configure adonisjs-tenant
+node ace configure @rikology/adonisjs-tenant
 # Edit database/migrations/xxx_create_tenant_user_table.ts
 # Change integer() to uuid() or string() as needed
 ```
@@ -416,7 +416,7 @@ If you see `TenantNotResolvedError: No tenant context available`, it means you'r
 
 ### configure command skipped access tokens migration
 
-The `node ace configure adonisjs-tenant` command now detects your auth setup and skips the access tokens migration if you haven't configured `@adonisjs/auth` yet. This is intentional — it prevents migration failures.
+The `node ace configure @rikology/adonisjs-tenant` command now detects your auth setup and skips the access tokens migration if you haven't configured `@adonisjs/auth` yet. This is intentional — it prevents migration failures.
 
 To add the access tokens migration later:
 
