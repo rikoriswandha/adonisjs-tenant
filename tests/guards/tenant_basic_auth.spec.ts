@@ -4,6 +4,7 @@ import type { BasicAuthUserProviderContract } from '@adonisjs/auth/types/basic_a
 import type { HttpContext } from '@adonisjs/core/http'
 import {
   tenantAwareBasicAuthGuard,
+  TenantAwareBasicAuthGuard,
   TenantAwareBasicAuthUserProvider,
 } from '../../src/guards/tenant_aware_basic_auth.js'
 import type { TenantContext } from '../../src/types.js'
@@ -147,5 +148,34 @@ test.group('TenantAwareBasicAuthUserProvider', () => {
     } as never)
 
     assert.isFunction(factory)
+  })
+  test('defers basic authentication until package tenant context is available', async ({
+    assert,
+  }) => {
+    const provider = new TenantAwareBasicAuthUserProvider(
+      createMockProvider(true),
+      createTenantProvider(true)
+    )
+    const guard = new TenantAwareBasicAuthGuard(
+      'basic',
+      {
+        request: {
+          request: {
+            headers: {
+              authorization: `Basic ${Buffer.from('user@example.com:password').toString('base64')}`,
+            },
+          },
+        },
+      } as never,
+      { emit: () => undefined } as never,
+      provider
+    )
+
+    assert.isFalse(await guard.check())
+    assert.isFalse(guard.authenticationAttempted)
+
+    assert.isTrue(await runWithTenant(tenant, () => guard.check()))
+    assert.isTrue(guard.authenticationAttempted)
+    assert.equal(guard.user?.email, 'user@example.com')
   })
 })

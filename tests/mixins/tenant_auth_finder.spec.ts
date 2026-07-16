@@ -3,7 +3,10 @@ import { BaseModel, column } from '@adonisjs/lucid/orm'
 import { Database } from '@adonisjs/lucid/database'
 import { Secret } from '@adonisjs/core/helpers'
 import type { Hash } from '@adonisjs/core/hash'
-import { withTenantAuthFinder } from '../../src/mixins/tenant_auth_finder.js'
+import {
+  withTenantAuthFinder,
+  type TenantAuthFinderOptions,
+} from '../../src/mixins/tenant_auth_finder.js'
 import {
   getTenantContext,
   runWithTenant,
@@ -35,6 +38,36 @@ test.group('withTenantAuthFinder', () => {
     assert.isFunction(User.findForAuth)
     assert.isFunction(User.verifyCredentials)
     assert.isDefined(User.accessTokens)
+  })
+
+  test('preserves TenantScope inference only for statically direct options', ({ assert }) => {
+    const directOptions = { uids: ['email'] } satisfies TenantAuthFinderOptions
+    const membershipOptions = {
+      membership: { pivotTable: 'tenant_user' },
+    } satisfies TenantAuthFinderOptions
+    const broadlyTypedDirectOptions: TenantAuthFinderOptions = { uids: ['email'] }
+    const broadlyTypedMembershipOptions: TenantAuthFinderOptions = {
+      membership: { pivotTable: 'tenant_user' },
+    }
+
+    class DirectUser extends withTenantAuthFinder(unusedHash, directOptions)(BaseModel) {}
+    class MembershipUser extends withTenantAuthFinder(unusedHash, membershipOptions)(BaseModel) {}
+    class BroadDirectUser extends withTenantAuthFinder(
+      unusedHash,
+      broadlyTypedDirectOptions
+    )(BaseModel) {}
+    class BroadMembershipUser extends withTenantAuthFinder(
+      unusedHash,
+      broadlyTypedMembershipOptions
+    )(BaseModel) {}
+
+    assert.isFunction(DirectUser.forTenant)
+    // @ts-expect-error Membership users cannot use direct tenant scoping.
+    void MembershipUser.forTenant
+    // @ts-expect-error Runtime-optional membership cannot safely promise direct tenant scoping.
+    void BroadDirectUser.forTenant
+    // @ts-expect-error Runtime-optional membership cannot safely promise direct tenant scoping.
+    void BroadMembershipUser.forTenant
   })
 
   test('findForAuth scopes to tenant when context is active', async ({ assert }) => {
@@ -124,28 +157,37 @@ test.group('withTenantAuthFinder', () => {
         { id: 'tenant-b', name: 'Tenant B', slug: 'tenant-b' },
         () => User.findForAuth(['email'], 'shared@example.com')
       )) as InstanceType<typeof User> | null
+      const directlyQueriedInTenantA = await runWithTenant(
+        { id: 'tenant-a', name: 'Tenant A', slug: 'tenant-a' },
+        () => User.query().where('email', 'shared@example.com').first()
+      )
 
       assert.equal(userInTenantA?.tenant_id, 'tenant-a')
       assert.equal(userInTenantB?.tenant_id, 'tenant-b')
       assert.notEqual(userInTenantA?.id, userInTenantB?.id)
+      assert.equal(directlyQueriedInTenantA?.tenant_id, 'tenant-a')
     } finally {
       await database.manager.closeAll()
     }
   })
 
-  test('findForAuth authenticates global users through memberships without hydrating pivot columns', async ({
+  test('findForAuth authenticates global users through custom memberships without applying TenantScope', async ({
     assert,
   }) => {
     class User extends withTenantAuthFinder(unusedHash, {
-      membership: { pivotTable: 'tenant_user' },
+      membership: {
+        pivotTable: 'organisation_members',
+        userForeignKey: 'principal_key',
+        tenantForeignKey: 'organisation_key',
+      },
     })(BaseModel) {
       static table = 'users'
       static primaryKey = 'uuid'
 
-      @column({ isPrimary: true, columnName: 'id' })
-      declare uuid: number
+      @column({ isPrimary: true, columnName: 'user_uuid' })
+      declare uuid: string
 
-      @column()
+      @column({ columnName: 'login_email' })
       declare email: string
 
       @column()
@@ -182,28 +224,38 @@ test.group('withTenantAuthFinder', () => {
     try {
       const connection = database.connection()
       await connection.schema.createTable('users', (table) => {
-        table.increments('id')
-        table.string('email').notNullable()
+        table.string('user_uuid').primary()
+        table.string('login_email').notNullable()
         table.string('password').notNullable()
       })
-      await connection.schema.createTable('tenant_user', (table) => {
+      await connection.schema.createTable('organisation_members', (table) => {
         table.increments('id')
-        table.integer('user_id').notNullable()
-        table.string('tenant_id').notNullable()
-        table.string('email').notNullable()
+        table.string('principal_key').notNullable()
+        table.string('organisation_key').notNullable()
+        table.string('login_email').notNullable()
       })
       await connection.table('users').insert({
-        id: 1,
-        email: 'member@example.com',
+        user_uuid: 'global-user',
+        login_email: 'member@example.com',
         password: 'user-password',
       })
-      await connection.table('tenant_user').insert({
-        id: 999,
-        user_id: 1,
-        tenant_id: 'tenant-a',
-        email: 'pivot@example.com',
-      })
+      await connection.table('organisation_members').multiInsert([
+        {
+          principal_key: 'global-user',
+          organisation_key: 'tenant-a',
+          login_email: 'pivot-a@example.com',
+        },
+        {
+          principal_key: 'global-user',
+          organisation_key: 'tenant-b',
+          login_email: 'pivot-b@example.com',
+        },
+      ])
       User.useAdapter(database.modelAdapter())
+      const globallyQueriedInTenantA = await runWithTenant(
+        { id: 'tenant-a', name: 'Tenant A', slug: 'tenant-a' },
+        () => User.query().where('login_email', 'member@example.com').first()
+      )
 
       const userInTenantA = (await runWithTenant(
         { id: 'tenant-a', name: 'Tenant A', slug: 'tenant-a' },
@@ -213,10 +265,17 @@ test.group('withTenantAuthFinder', () => {
         { id: 'tenant-b', name: 'Tenant B', slug: 'tenant-b' },
         () => User.findForAuth(['email'], 'member@example.com')
       )) as InstanceType<typeof User> | null
+      const userInTenantC = (await runWithTenant(
+        { id: 'tenant-c', name: 'Tenant C', slug: 'tenant-c' },
+        () => User.findForAuth(['email'], 'member@example.com')
+      )) as InstanceType<typeof User> | null
 
-      assert.equal(userInTenantA?.uuid, 1)
+      assert.equal(userInTenantA?.uuid, 'global-user')
+      assert.equal(userInTenantB?.uuid, 'global-user')
       assert.equal(userInTenantA?.email, 'member@example.com')
-      assert.isNull(userInTenantB)
+      assert.equal(userInTenantB?.email, 'member@example.com')
+      assert.equal(globallyQueriedInTenantA?.uuid, 'global-user')
+      assert.isNull(userInTenantC)
     } finally {
       await database.manager.closeAll()
     }

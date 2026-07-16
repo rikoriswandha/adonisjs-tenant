@@ -10,19 +10,13 @@ export default class extends BaseSchema {
 
   async up() {
     this.schema.createTable(this.tableName, (table) => {
-      table.increments('id').primary()
-      
-      table
-        .integer('tenant_id')
-        .unsigned()
+      table.{{ tenantIdColumn }}
         .notNullable()
         .references('id')
         .inTable('tenants')
         .onDelete('CASCADE')
       
-      table
-        .integer('user_id')
-        .unsigned()
+      table.{{ userIdColumn }}
         .notNullable()
         .references('id')
         .inTable('users')
@@ -33,8 +27,7 @@ export default class extends BaseSchema {
       table.timestamp('created_at')
       table.timestamp('updated_at')
 
-      table.unique(['tenant_id', 'user_id'])
-      table.index(['tenant_id'])
+      table.primary(['tenant_id', 'user_id'])
       table.index(['user_id'])
     })
   }

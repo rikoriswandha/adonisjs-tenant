@@ -14,9 +14,97 @@
 
 import type Configure from '@adonisjs/core/commands/configure'
 import { stubsRoot } from './stubs/main.js'
-import { existsSync, readFileSync } from 'node:fs'
+import { existsSync, readdirSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
+
+const TENANT_USER_MIGRATION_SUFFIX = '_create_tenant_user_table'
+const ACCESS_TOKENS_MIGRATION_SUFFIX = '_add_tenant_id_to_access_tokens_table'
+
+const IDENTIFIER_TYPES = [
+  {
+    name: 'integer',
+    message: 'Integer (default)',
+    column: "integer('{{ columnName }}').unsigned()",
+  },
+  {
+    name: 'bigint',
+    message: 'Big integer',
+    column: "bigInteger('{{ columnName }}').unsigned()",
+  },
+  {
+    name: 'uuid',
+    message: 'UUID',
+    column: "uuid('{{ columnName }}')",
+  },
+  {
+    name: 'string',
+    message: 'String',
+    column: "string('{{ columnName }}')",
+  },
+] as const
+
+type IdentifierType = (typeof IDENTIFIER_TYPES)[number]['name']
+
+function isIdentifierType(value: string): value is IdentifierType {
+  return IDENTIFIER_TYPES.some((identifierType) => identifierType.name === value)
+}
+
+function hasGeneratedMigration(appRoot: string, suffix: string) {
+  const migrationsPath = join(appRoot, 'database', 'migrations')
+
+  if (!existsSync(migrationsPath)) {
+    return false
+  }
+
+  try {
+    return readdirSync(migrationsPath).some(
+      (fileName) =>
+        fileName.endsWith(`${suffix}.ts`) ||
+        fileName.endsWith(`${suffix}.js`) ||
+        fileName.endsWith(`${suffix}.mjs`)
+    )
+  } catch {
+    return false
+  }
+}
+
+async function selectIdentifierType(
+  command: Configure,
+  subject: 'tenant' | 'user'
+): Promise<IdentifierType> {
+  const environmentVariable = `ADONISJS_TENANT_${subject.toUpperCase()}_ID_TYPE`
+  const environmentValue = process.env[environmentVariable]
+
+  if (environmentValue !== undefined) {
+    if (!isIdentifierType(environmentValue)) {
+      throw new Error(
+        `${environmentVariable} must be one of: ${IDENTIFIER_TYPES.map(({ name }) => name).join(', ')}`
+      )
+    }
+
+    return environmentValue
+  }
+
+  return command.prompt.choice(
+    `Select the ${subject} identifier type`,
+    IDENTIFIER_TYPES.map(({ name, message }) => ({ name, message })),
+    {
+      default: 'integer',
+      validate: (value) => isIdentifierType(value) || 'Select a supported identifier type',
+    }
+  )
+}
+
+function identifierColumn(type: IdentifierType, columnName: 'tenant_id' | 'user_id') {
+  const definition = IDENTIFIER_TYPES.find((identifierType) => identifierType.name === type)
+
+  if (!definition) {
+    throw new Error(`Unsupported identifier type "${type}"`)
+  }
+
+  return definition.column.replace('{{ columnName }}', columnName)
+}
 
 function detectAuthConfig(appRoot: string): { hasAuthConfig: boolean; hasAccessTokens: boolean } {
   const authConfigPath = join(appRoot, 'config', 'auth.ts')
@@ -62,6 +150,7 @@ async function validatePrerequisites(command: Configure) {
 
 export async function configure(command: Configure) {
   const { skipAccessTokensMigration } = await validatePrerequisites(command)
+  const appRoot = fileURLToPath(command.app.appRoot)
   const codemods = await command.createCodemods()
   await codemods.updateRcFile((rcFile) => {
     rcFile.addProvider('@rikology/adonisjs-tenant/providers/tenancy_provider')
@@ -76,26 +165,35 @@ export async function configure(command: Configure) {
 
   await codemods.makeUsingStub(stubsRoot, 'config/tenancy.stub', {})
 
-  const timestamp = Date.now()
+  if (hasGeneratedMigration(appRoot, TENANT_USER_MIGRATION_SUFFIX)) {
+    command.logger.info('Skipped tenant_user migration because it has already been generated.')
+  } else {
+    const tenantIdentifierType = await selectIdentifierType(command, 'tenant')
+    const userIdentifierType = await selectIdentifierType(command, 'user')
 
-  await codemods.makeUsingStub(stubsRoot, 'migrations/tenant_user.stub', {
-    migration: {
-      folder: 'database/migrations',
-      fileName: `${timestamp}_create_tenant_user_table.ts`,
-    },
-  })
-
-  if (!skipAccessTokensMigration) {
-    await codemods.makeUsingStub(stubsRoot, 'migrations/add_tenant_id_to_access_tokens.stub', {
+    await codemods.makeUsingStub(stubsRoot, 'migrations/tenant_user.stub', {
       migration: {
         folder: 'database/migrations',
-        fileName: `${timestamp}_add_tenant_id_to_access_tokens_table.ts`,
+        fileName: `${Date.now()}_create_tenant_user_table.ts`,
       },
+      tenantIdColumn: identifierColumn(tenantIdentifierType, 'tenant_id'),
+      userIdColumn: identifierColumn(userIdentifierType, 'user_id'),
     })
-  } else {
+  }
+
+  if (skipAccessTokensMigration) {
     command.logger.info(
       'Skipped access tokens migration. To add it later, run: node ace make:migration add_tenant_id_to_access_tokens'
     )
+  } else if (hasGeneratedMigration(appRoot, ACCESS_TOKENS_MIGRATION_SUFFIX)) {
+    command.logger.info('Skipped access tokens migration because it has already been generated.')
+  } else {
+    await codemods.makeUsingStub(stubsRoot, 'migrations/add_tenant_id_to_access_tokens.stub', {
+      migration: {
+        folder: 'database/migrations',
+        fileName: `${Date.now()}_add_tenant_id_to_access_tokens_table.ts`,
+      },
+    })
   }
 
   command.logger.success('@rikology/adonisjs-tenant configured successfully!')

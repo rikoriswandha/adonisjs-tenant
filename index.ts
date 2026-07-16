@@ -52,6 +52,7 @@ export {
   tenantAwareAccessTokensGuard,
   tenantAwareBasicAuthGuard,
 } from './src/guards/define_config.js'
+export type { ResolvedTenantAuthConfig } from './src/guards/define_config.js'
 
 // ─── Extensions ─────────────────────────────────────────────────
 export { extendAuthenticator, TenantAuthenticator } from './src/extensions/authenticator.js'

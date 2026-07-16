@@ -6,7 +6,7 @@ import type {
   AccessTokensGuardUser,
 } from '@adonisjs/auth/types/access_tokens'
 import type { ApplicationService, ConfigProvider } from '@adonisjs/core/types'
-import type { GuardConfigProvider, GuardFactory, GuardContract } from '@adonisjs/auth/types'
+import type { GuardConfigProvider } from '@adonisjs/auth/types'
 import type { HttpContext } from '@adonisjs/core/http'
 import { RuntimeException } from '@adonisjs/core/exceptions'
 import type { Secret } from '@adonisjs/core/helpers'
@@ -68,6 +68,15 @@ export class TenantAwareAccessTokensUserProvider<
     return this.tenantTokenProvider.verifyForCurrentTenant(tokenValue)
   }
 }
+export class TenantAwareAccessTokensGuard<RealUser> extends AccessTokensGuard<
+  TenantAwareAccessTokensUserProvider<RealUser>
+> {
+  async check(): Promise<boolean> {
+    if (!getTenantContext()) return false
+
+    return super.check()
+  }
+}
 
 export function tenantAwareAccessTokensGuard<RealUser>(config: {
   provider:
@@ -76,7 +85,7 @@ export function tenantAwareAccessTokensGuard<RealUser>(config: {
   tenantTokenProvider:
     | TenantBoundAccessTokenVerifier
     | ConfigProvider<TenantBoundAccessTokenVerifier>
-}): GuardConfigProvider<GuardFactory> {
+}): GuardConfigProvider<(ctx: HttpContext) => TenantAwareAccessTokensGuard<RealUser>> {
   return {
     resolver: async (_name: string, app: ApplicationService) => {
       const rawProvider = isConfigProvider(config.provider)
@@ -98,10 +107,8 @@ export function tenantAwareAccessTokensGuard<RealUser>(config: {
 
       const emitter = await app.container.make('emitter')
 
-      return (ctx: HttpContext) => {
-        const guard = new AccessTokensGuard(_name, ctx, emitter as any, wrappedProvider)
-        return guard as unknown as GuardContract<unknown>
-      }
+      return (ctx: HttpContext) =>
+        new TenantAwareAccessTokensGuard(_name, ctx, emitter as never, wrappedProvider)
     },
   }
 }

@@ -4,6 +4,7 @@ import type { SessionUserProviderContract } from '@adonisjs/auth/types/session'
 import type { HttpContext } from '@adonisjs/core/http'
 import {
   tenantAwareSessionGuard,
+  TenantAwareSessionGuard,
   TenantAwareSessionUserProvider,
 } from '../../src/guards/tenant_aware_session.js'
 import type { TenantContext } from '../../src/types.js'
@@ -141,5 +142,33 @@ test.group('TenantAwareSessionUserProvider', () => {
     } as never)
 
     assert.isFunction(factory)
+  })
+  test('defers authentication until package tenant context is available', async ({ assert }) => {
+    const provider = new TenantAwareSessionUserProvider(
+      createMockProvider(true),
+      createTenantProvider(true)
+    )
+    const guard = new TenantAwareSessionGuard(
+      'web',
+      {
+        session: {
+          sessionId: 'session-1',
+          get: () => 'custom-primary-key',
+        },
+        request: {
+          encryptedCookie: () => undefined,
+        },
+      } as never,
+      { useRememberMeTokens: false },
+      { emit: () => undefined } as never,
+      provider
+    )
+
+    assert.isFalse(await guard.check())
+    assert.isFalse(guard.authenticationAttempted)
+
+    assert.isTrue(await runWithTenant(tenant, () => guard.check()))
+    assert.isTrue(guard.authenticationAttempted)
+    assert.equal(guard.user?.email, 'user@example.com')
   })
 })

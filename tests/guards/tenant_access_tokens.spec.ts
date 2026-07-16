@@ -5,6 +5,7 @@ import { AccessToken } from '@adonisjs/auth/access_tokens'
 import type { AccessTokensUserProviderContract } from '@adonisjs/auth/types/access_tokens'
 import {
   tenantAwareAccessTokensGuard,
+  TenantAwareAccessTokensGuard,
   TenantAwareAccessTokensUserProvider,
   type TenantBoundAccessTokenVerifier,
 } from '../../src/guards/tenant_aware_access_tokens.js'
@@ -147,5 +148,29 @@ test.group('TenantAwareAccessTokensUserProvider', () => {
         } as never),
       /require a tenantTokenProvider/
     )
+  })
+  test('defers token authentication until package tenant context is available', async ({
+    assert,
+  }) => {
+    const provider = new TenantAwareAccessTokensUserProvider(createProvider(), {
+      verifyForCurrentTenant: async () => createToken(),
+    })
+    const guard = new TenantAwareAccessTokensGuard(
+      'api',
+      {
+        request: {
+          header: () => 'Bearer oat_tenant_a',
+        },
+      } as never,
+      { emit: () => undefined } as never,
+      provider
+    )
+
+    assert.isFalse(await guard.check())
+    assert.isFalse(guard.authenticationAttempted)
+
+    assert.isTrue(await runWithTenant(tenantA, () => guard.check()))
+    assert.isTrue(guard.authenticationAttempted)
+    assert.instanceOf(guard.user?.currentAccessToken, AccessToken)
   })
 })

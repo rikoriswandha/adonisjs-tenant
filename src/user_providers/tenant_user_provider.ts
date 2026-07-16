@@ -2,13 +2,32 @@ import { RuntimeException } from '@adonisjs/core/exceptions'
 import type { LucidModel } from '@adonisjs/lucid/types/model'
 import type { TenantContext, TenantUserProviderContract } from '../types.js'
 
+export type TenantUserProviderOptions = {
+  pivotTable?: string
+  userForeignKey?: string
+  tenantForeignKey?: string
+}
+
 export class TenantUserProvider<UserModel extends LucidModel> implements TenantUserProviderContract<
   InstanceType<UserModel>
 > {
+  private readonly membership: Required<TenantUserProviderOptions>
+
+  constructor(userModel: UserModel, pivotTable?: string)
+  constructor(userModel: UserModel, options?: TenantUserProviderOptions)
   constructor(
-    private userModel: UserModel,
-    private tenantUserPivot: string = 'tenant_user'
-  ) {}
+    private readonly userModel: UserModel,
+    options: string | TenantUserProviderOptions = 'tenant_user'
+  ) {
+    this.membership =
+      typeof options === 'string'
+        ? { pivotTable: options, userForeignKey: 'user_id', tenantForeignKey: 'tenant_id' }
+        : {
+            pivotTable: options.pivotTable ?? 'tenant_user',
+            userForeignKey: options.userForeignKey ?? 'user_id',
+            tenantForeignKey: options.tenantForeignKey ?? 'tenant_id',
+          }
+  }
 
   async findById(
     tenant: TenantContext,
@@ -21,12 +40,12 @@ export class TenantUserProvider<UserModel extends LucidModel> implements TenantU
       .query()
       .select(`${this.userModel.table}.*`)
       .innerJoin(
-        this.tenantUserPivot,
+        this.membership.pivotTable,
         `${this.userModel.table}.${primaryKeyColumn}`,
-        `${this.tenantUserPivot}.user_id`
+        `${this.membership.pivotTable}.${this.membership.userForeignKey}`
       )
       .where(`${this.userModel.table}.${primaryKeyColumn}`, databaseIdentifier)
-      .where(`${this.tenantUserPivot}.tenant_id`, tenant.id)
+      .where(`${this.membership.pivotTable}.${this.membership.tenantForeignKey}`, tenant.id)
       .first()
 
     return user

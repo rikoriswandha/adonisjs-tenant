@@ -5,7 +5,7 @@ import type {
   BasicAuthGuardUser,
 } from '@adonisjs/auth/types/basic_auth'
 import type { ApplicationService, ConfigProvider } from '@adonisjs/core/types'
-import type { GuardConfigProvider, GuardFactory, GuardContract } from '@adonisjs/auth/types'
+import type { GuardConfigProvider } from '@adonisjs/auth/types'
 import type { HttpContext } from '@adonisjs/core/http'
 import { getTenantContext } from '../tenant_context.js'
 import type { TenantContext, TenantUserProviderContract } from '../types.js'
@@ -46,13 +46,22 @@ export class TenantAwareBasicAuthUserProvider<
     return this.wrappedProvider.createUserForGuard(user)
   }
 }
+export class TenantAwareBasicAuthGuard<RealUser> extends BasicAuthGuard<
+  TenantAwareBasicAuthUserProvider<RealUser>
+> {
+  async check(): Promise<boolean> {
+    if (!getTenantContext()) return false
+
+    return super.check()
+  }
+}
 
 export function tenantAwareBasicAuthGuard<RealUser>(config: {
   provider:
     | BasicAuthUserProviderContract<RealUser>
     | ConfigProvider<BasicAuthUserProviderContract<RealUser>>
   tenantProvider: TenantUserProviderContract<RealUser>
-}): GuardConfigProvider<GuardFactory> {
+}): GuardConfigProvider<(ctx: HttpContext) => TenantAwareBasicAuthGuard<RealUser>> {
   return {
     resolver: async (_name: string, app: ApplicationService) => {
       const rawProvider = isConfigProvider(config.provider)
@@ -66,14 +75,8 @@ export function tenantAwareBasicAuthGuard<RealUser>(config: {
 
       const emitter = await app.container.make('emitter')
 
-      return (ctx: HttpContext) => {
-        return new BasicAuthGuard(
-          _name,
-          ctx,
-          emitter as any,
-          wrappedProvider
-        ) as unknown as GuardContract<unknown>
-      }
+      return (ctx: HttpContext) =>
+        new TenantAwareBasicAuthGuard(_name, ctx, emitter as never, wrappedProvider)
     },
   }
 }

@@ -2,7 +2,7 @@ import { SessionGuard } from '@adonisjs/auth/session'
 import { symbols } from '@adonisjs/auth'
 import type { SessionUserProviderContract, SessionGuardUser } from '@adonisjs/auth/types/session'
 import type { ApplicationService, ConfigProvider } from '@adonisjs/core/types'
-import type { GuardConfigProvider, GuardFactory, GuardContract } from '@adonisjs/auth/types'
+import type { GuardConfigProvider } from '@adonisjs/auth/types'
 import type { HttpContext } from '@adonisjs/core/http'
 import { getTenantContext } from '../tenant_context.js'
 import type { TenantContext, TenantUserProviderContract } from '../types.js'
@@ -40,13 +40,23 @@ export class TenantAwareSessionUserProvider<
     return this.wrappedProvider.createUserForGuard(user)
   }
 }
+export class TenantAwareSessionGuard<RealUser> extends SessionGuard<
+  false,
+  TenantAwareSessionUserProvider<RealUser>
+> {
+  async check(): Promise<boolean> {
+    if (!getTenantContext()) return false
+
+    return super.check()
+  }
+}
 
 export function tenantAwareSessionGuard<RealUser>(config: {
   provider:
     | SessionUserProviderContract<RealUser>
     | ConfigProvider<SessionUserProviderContract<RealUser>>
   tenantProvider: TenantUserProviderContract<RealUser>
-}): GuardConfigProvider<GuardFactory> {
+}): GuardConfigProvider<(ctx: HttpContext) => TenantAwareSessionGuard<RealUser>> {
   return {
     resolver: async (_name: string, app: ApplicationService) => {
       const rawProvider = isConfigProvider(config.provider)
@@ -57,15 +67,14 @@ export function tenantAwareSessionGuard<RealUser>(config: {
 
       const emitter = await app.container.make('emitter')
 
-      return (ctx: HttpContext) => {
-        return new SessionGuard(
+      return (ctx: HttpContext) =>
+        new TenantAwareSessionGuard(
           _name,
           ctx,
           { useRememberMeTokens: false },
-          emitter as any,
-          wrappedProvider as any
-        ) as unknown as GuardContract<unknown>
-      }
+          emitter as never,
+          wrappedProvider
+        )
     },
   }
 }

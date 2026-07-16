@@ -12,7 +12,7 @@ node ace configure @adonisjs/auth --guard=access_tokens
 node ace configure @rikology/adonisjs-tenant
 ```
 
-The tenancy configure command requires `config/auth.ts`. It registers the tenancy provider, the `tenant` named middleware, a `config/tenancy.ts` stub, and tenant migrations. It fails before making changes when Auth is not configured.
+The tenancy configure command requires `config/auth.ts`. It registers the tenancy provider, the `tenant` named middleware, a `config/tenancy.ts` stub, and tenant migrations. When creating the membership pivot, it asks independently whether the tenant and user identifiers are integers, big integers, UUIDs, or strings; integer remains the default. For non-interactive configuration, set `ADONISJS_TENANT_TENANT_ID_TYPE` and `ADONISJS_TENANT_USER_ID_TYPE` to `integer`, `bigint`, `uuid`, or `string`. Re-running configure detects the package's existing migration filenames and skips generating duplicates. The command fails before making changes when Auth is not configured.
 
 ## Configuration
 
@@ -87,7 +87,7 @@ router
   .middleware('tenant')
 ```
 
-For a resolved tenant, the middleware assigns `ctx.tenant` and runs downstream code in the package's `AsyncLocalStorage` context. Tenant-aware guards and `auth.tenant` read that package context directly, so they do not require Adonis `app.useAsyncLocalStorage` to be enabled. The root package declaration surface augments both `HttpContext` and Adonis Auth's `Authenticator`, so `ctx.tenant` and `auth.tenant` are typed as `TenantContext | undefined`.
+For a resolved tenant, the middleware assigns `ctx.tenant` and runs downstream code in the package's `AsyncLocalStorage` context. Tenant-aware guards and `auth.tenant` read that package context directly, so they do not require Adonis `app.useAsyncLocalStorage` to be enabled. A tenant-aware guard also leaves a tenant-less silent `check()` unattempted, allowing starter-kit `silent_auth_middleware` to run before a route's named `tenant` middleware without caching a failed authentication attempt. Explicit authentication still fails closed until a tenant is resolved. The root package declaration surface augments both `HttpContext` and Adonis Auth's `Authenticator`, so `ctx.tenant` and `auth.tenant` are typed as `TenantContext | undefined`.
 
 The provider automatically extends AuthManager during boot; do not call `extendAuthenticator()` in application code just to obtain `auth.tenant`.
 
@@ -190,6 +190,18 @@ export default class User extends withTenantAuthFinder(() => hash.use(), {
 ```
 
 Membership mode leaves the global user model unscoped, joins the pivot only for credential lookup, and hydrates the model exclusively from user-table columns. Both modes bind newly issued access tokens to the active tenant. The generated migration safely adds a nullable, indexed `tenant_id` to an existing `auth_access_tokens` table. Run it, explicitly backfill each token's tenant or revoke/delete tokens that cannot be assigned, then author and run a follow-up migration that makes the column `NOT NULL`. Until that cutover, legacy null tokens are rejected; new tokens are written and verified only in their creating tenant.
+
+When session or basic authentication validates membership separately, configure `TenantUserProvider` with the same pivot keys:
+
+```ts
+import { TenantUserProvider } from '@rikology/adonisjs-tenant/user_providers'
+
+const tenantUsers = new TenantUserProvider(User, {
+  pivotTable: 'tenant_user',
+  userForeignKey: 'user_id',
+  tenantForeignKey: 'tenant_id',
+})
+```
 
 ## Klinika / database RLS
 
