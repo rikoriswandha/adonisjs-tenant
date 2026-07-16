@@ -1,4 +1,7 @@
 import { test } from '@japa/runner'
+import type { HashManager } from '@adonisjs/core/hash'
+import { BaseModel } from '@adonisjs/lucid/orm'
+import type { SessionGuard } from '@adonisjs/auth/session'
 import type {
   TenantConfig,
   TenantContext,
@@ -24,7 +27,70 @@ import {
 } from '../src/guards/define_config.ts'
 import type { TenantBoundAccessTokenVerifier } from '../src/guards/tenant_aware_access_tokens.ts'
 
+import { withTenantAuthFinder } from '../src/mixins/tenant_auth_finder.ts'
 const S = symbols
+
+function assertTenantAuthFinderTypes(hash: HashManager<Record<string, never>>) {
+  class DirectUserSchema extends BaseModel {}
+  class DirectUser extends withTenantAuthFinder(hash)(DirectUserSchema) {
+    get initials() {
+      return 'DU'
+    }
+  }
+
+  class MembershipUserSchema extends BaseModel {}
+  class MembershipUser extends withTenantAuthFinder(hash, {
+    membership: { pivotTable: 'tenant_user' },
+  })(MembershipUserSchema) {
+    get initials() {
+      return 'MU'
+    }
+  }
+
+  async function assertDirectMode(
+    guard: SessionGuard<false, SessionUserProviderContract<DirectUser>>
+  ) {
+    const user = await DirectUser.verifyCredentials('direct@example.com', 'secret')
+    const initials: string = user.initials
+    await user.verifyPassword('secret')
+    await user.validatePassword('secret')
+    await guard.login(user)
+    void initials
+
+    const foundUser = await DirectUser.findForAuth(['email'], 'direct@example.com')
+    if (foundUser) {
+      const foundInitials: string = foundUser.initials
+      await foundUser.verifyPassword('secret')
+      await foundUser.validatePassword('secret')
+      await guard.login(foundUser)
+      void foundInitials
+    }
+  }
+
+  async function assertMembershipMode(
+    guard: SessionGuard<false, SessionUserProviderContract<MembershipUser>>
+  ) {
+    const user = await MembershipUser.verifyCredentials('member@example.com', 'secret')
+    const initials: string = user.initials
+    await user.verifyPassword('secret')
+    await user.validatePassword('secret')
+    await guard.login(user)
+    void initials
+
+    const foundUser = await MembershipUser.findForAuth(['email'], 'member@example.com')
+    if (foundUser) {
+      const foundInitials: string = foundUser.initials
+      await foundUser.verifyPassword('secret')
+      await foundUser.validatePassword('secret')
+      await guard.login(foundUser)
+      void foundInitials
+    }
+  }
+
+  void [assertDirectMode, assertMembershipMode]
+}
+
+void assertTenantAuthFinderTypes
 
 test.group('Types', () => {
   test('defineTenancyConfig returns the input shape', ({ assert }) => {

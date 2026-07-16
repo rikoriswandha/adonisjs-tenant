@@ -129,18 +129,43 @@ type TenantAuthFinderDirectOptions = Omit<TenantAuthFinderOptions, 'membership'>
   membership?: undefined
 }
 
-type TenantAuthFinderMethods<Model extends NormalizeConstructor<typeof BaseModel>> = {
-  findForAuth(uids: string[], value: string): Promise<InstanceType<Model> | null>
-  verifyCredentials(uid: string, password: string): Promise<InstanceType<Model>>
-  readonly accessTokens: TenantDbAccessTokensProvider<LucidModel>
+type TenantAuthFinderInstance = {
+  verifyPassword(plainPassword: string): Promise<boolean>
+  validatePassword(plainPassword: string, passwordFieldName?: string): Promise<void>
 }
 
+type TenantAuthFinderStatic<Model extends NormalizeConstructor<typeof BaseModel>> = {
+  [Property in keyof Model]: Model[Property]
+}
+
+type TenantAuthFinderMethods<Model extends NormalizeConstructor<typeof BaseModel>> = {
+  hashPassword<T extends TenantAuthFinderClass<Model>>(
+    this: T,
+    user: InstanceType<T>
+  ): Promise<void>
+  findForAuth<T extends TenantAuthFinderClass<Model>>(
+    this: T,
+    uids: string[],
+    value: string
+  ): Promise<InstanceType<T> | null>
+  verifyCredentials<T extends TenantAuthFinderClass<Model>>(
+    this: T,
+    uid: string,
+    password: string
+  ): Promise<InstanceType<T>>
+  readonly accessTokens: TenantDbAccessTokensProvider<LucidModel>
+  new (...args: ConstructorParameters<Model>): InstanceType<Model> & TenantAuthFinderInstance
+}
+
+type TenantAuthFinderClass<Model extends NormalizeConstructor<typeof BaseModel>> =
+  TenantAuthFinderStatic<Model> & TenantAuthFinderMethods<Model>
+
 export type TenantAuthFinderModelContract<Model extends NormalizeConstructor<typeof BaseModel>> =
-  TenantScopedModelContract<Model> & TenantAuthFinderMethods<Model>
+  TenantAuthFinderClass<TenantScopedModelContract<Model>>
 
 export type TenantMembershipAuthFinderModelContract<
   Model extends NormalizeConstructor<typeof BaseModel>,
-> = Model & TenantAuthFinderMethods<Model>
+> = TenantAuthFinderClass<Model>
 
 /**
  * Composable mixin that adds tenant-aware authentication lookup and access
