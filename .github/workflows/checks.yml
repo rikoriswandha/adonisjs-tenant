@@ -11,8 +11,8 @@ jobs:
     steps:
       # v4.2.2
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
-      # v4.0.3
-      - uses: actions/setup-node@1e60f620b9541d2ab18bd2f7672f6c50420cf4b0
+      # v5
+      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444
         with:
           node-version: 24
       - name: Install
@@ -25,8 +25,8 @@ jobs:
     steps:
       # v4.2.2
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
-      # v4.0.3
-      - uses: actions/setup-node@1e60f620b9541d2ab18bd2f7672f6c50420cf4b0
+      # v5
+      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444
         with:
           node-version: 24
       - name: Install
@@ -44,8 +44,8 @@ jobs:
       # v4.2.2
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
       - name: Use Node.js ${{ matrix.node-version }}
-        # v4.0.3
-        uses: actions/setup-node@1e60f620b9541d2ab18bd2f7672f6c50420cf4b0
+        # v5
+        uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444
         with:
           node-version: ${{ matrix.node-version }}
       - name: Install
@@ -58,8 +58,8 @@ jobs:
     steps:
       # v4.2.2
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
-      # v4.0.3
-      - uses: actions/setup-node@1e60f620b9541d2ab18bd2f7672f6c50420cf4b0
+      # v5
+      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444
         with:
           node-version: 24
       - name: Install
